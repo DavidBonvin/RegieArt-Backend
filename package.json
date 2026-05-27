@@ -1,0 +1,21 @@
+{
+  "name": "regieart-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev:api": "pnpm --filter api start:dev",
+    "build:api": "pnpm --filter api build",
+    "test:api": "pnpm --filter api test",
+    "test:api:cov": "pnpm --filter api test:cov",
+    "db:generate": "pnpm --filter @regieart/database prisma:generate",
+    "db:migrate": "pnpm --filter @regieart/database prisma:migrate",
+    "db:studio": "pnpm --filter @regieart/database prisma:studio",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}

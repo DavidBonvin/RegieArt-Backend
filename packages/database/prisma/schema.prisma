@@ -1,0 +1,113 @@
+// ============================================================
+// RégieArt — Schema de Prisma (Sprint 1)
+// NOTA: Este schema será revisado con el usuario antes del
+// Sprint 2 para hacerlo más robusto y completo.
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── USUARIOS ────────────────────────────────────────────────
+// El ID primario de autenticación viene de Keycloak (keycloakId).
+// El usuario se crea en nuestra DB la primera vez que se autentica
+// (patrón "lazy provisioning").
+
+model User {
+  id          String   @id @default(cuid())
+  keycloakId  String   @unique // Sub del JWT de Keycloak
+  email       String   @unique
+  displayName String
+  firstName   String?
+  lastName    String?
+  avatarUrl   String?
+  phone       String?
+  bio         String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relaciones
+  memberships OrganizationMember[]
+  inviteLinks InviteLink[]
+
+  @@index([email])
+  @@map("users")
+}
+
+// ─── ORGANIZACIONES (Bandas / Agencias) ──────────────────────
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique // URL amigable: "los-reyes-del-son"
+  description String?
+  logoUrl     String?
+  website     String?
+  phone       String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relaciones
+  members     OrganizationMember[]
+  inviteLinks InviteLink[]
+
+  @@index([slug])
+  @@map("organizations")
+}
+
+// ─── MIEMBROS DE ORGANIZACIÓN ────────────────────────────────
+// Tabla intermedia con roles. Un usuario puede pertenecer
+// a múltiples organizaciones con roles distintos.
+
+model OrganizationMember {
+  id             String     @id @default(cuid())
+  userId         String
+  organizationId String
+  role           MemberRole @default(MEMBER)
+  joinedAt       DateTime   @default(now())
+
+  // Relaciones
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId]) // Un usuario, un rol por org
+  @@index([organizationId])
+  @@map("organization_members")
+}
+
+// ─── LINKS DE INVITACIÓN ─────────────────────────────────────
+// El líder genera un link único. El músico lo abre y se une.
+
+model InviteLink {
+  id             String     @id @default(cuid())
+  token          String     @unique @default(cuid())
+  organizationId String
+  createdById    String
+  role           MemberRole @default(MEMBER) // Rol que tendrá quien acepte
+  expiresAt      DateTime
+  usedAt         DateTime?  // null = pendiente, fecha = usado
+  createdAt      DateTime   @default(now())
+
+  // Relaciones
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation(fields: [createdById], references: [id])
+
+  @@index([token])
+  @@map("invite_links")
+}
+
+// ─── ENUMS ───────────────────────────────────────────────────
+
+enum MemberRole {
+  OWNER          // Creador de la org. Acceso total.
+  ADMIN          // Puede gestionar miembros y eventos.
+  MEMBER         // Músico/integrante estándar.
+  EXTERNAL_TECH  // Técnico externo. Acceso limitado a eventos asignados.
+}

@@ -1,0 +1,131 @@
+{
+  "id": "regieart",
+  "realm": "regieart",
+  "displayName": "RégieArt Ecosystem",
+  "enabled": true,
+  "registrationAllowed": true,
+  "registrationEmailAsUsername": true,
+  "rememberMe": true,
+  "verifyEmail": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "sslRequired": "external",
+  "accessTokenLifespan": 300,
+  "refreshTokenMaxReuse": 0,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "clients": [
+    {
+      "clientId": "regieart-api",
+      "name": "RégieArt API (Backend)",
+      "description": "Cliente backend NestJS - valida tokens JWT",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "change-me-in-production",
+      "bearerOnly": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true
+    },
+    {
+      "clientId": "regieart-mobile",
+      "name": "RégieArt Mobile (Expo)",
+      "description": "App móvil React Native / Expo",
+      "enabled": true,
+      "publicClient": true,
+      "bearerOnly": false,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [
+        "exp://*",
+        "regieart://*",
+        "http://localhost:8081/*"
+      ],
+      "webOrigins": ["*"]
+    },
+    {
+      "clientId": "regieart-web",
+      "name": "RégieArt Web (Panel Admin)",
+      "description": "Panel de administración React.js",
+      "enabled": true,
+      "publicClient": true,
+      "bearerOnly": false,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://localhost:3001/*",
+        "https://*.vercel.app/*",
+        "https://*.railway.app/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3001",
+        "https://*.vercel.app",
+        "https://*.railway.app"
+      ]
+    },
+    {
+      "clientId": "reflexo-mobile",
+      "name": "Reflexología Mobile",
+      "description": "App móvil cabina de reflexología",
+      "enabled": true,
+      "publicClient": true,
+      "bearerOnly": false,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [
+        "exp://*",
+        "reflexo://*",
+        "http://localhost:8082/*"
+      ],
+      "webOrigins": ["*"]
+    },
+    {
+      "clientId": "reflexo-web",
+      "name": "Reflexología Web",
+      "description": "Web pública cabina de reflexología",
+      "enabled": true,
+      "publicClient": true,
+      "bearerOnly": false,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://localhost:3002/*",
+        "https://*.vercel.app/*",
+        "https://*.railway.app/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3002",
+        "https://*.vercel.app"
+      ]
+    },
+    {
+      "clientId": "app3-mobile",
+      "name": "App3 Mobile",
+      "description": "Tercera app del ecosistema",
+      "enabled": true,
+      "publicClient": true,
+      "bearerOnly": false,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": ["exp://*", "app3://*"],
+      "webOrigins": ["*"]
+    }
+  ],
+  "roles": {
+    "realm": [
+      { "name": "app-user", "description": "Usuario estándar del ecosistema" },
+      { "name": "app-admin", "description": "Administrador del ecosistema" }
+    ]
+  },
+  "defaultRoles": ["app-user"],
+  "browserSecurityHeaders": {
+    "contentSecurityPolicy": "frame-src 'self'; frame-ancestors 'self'; object-src 'none';"
+  }
+}
