@@ -23,12 +23,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
         ? exception.getStatus()
         : HttpStatus.INTERNAL_SERVER_ERROR;
 
-    const message =
-      exception instanceof HttpException
-        ? exception.message
-        : 'Internal server error';
+    const { message, details } = this.extractMessage(exception);
 
-    // Log the error
     this.logger.error(
       `${request.method} ${request.url} ${status} - ${message}`,
       exception instanceof Error ? exception.stack : undefined,
@@ -38,10 +34,43 @@ export class HttpExceptionFilter implements ExceptionFilter {
       success: false,
       error: {
         code: status.toString(),
-        message: message,
+        message,
+        ...(details !== undefined && { details }),
       },
     };
 
     response.status(status).json(errorResponse);
+  }
+
+  // ValidationPipe wraps field errors in BadRequestException with a response
+  // shaped like `{ message: string[], error, statusCode }`. We surface the
+  // array as `details` so clients can render per-field feedback.
+  private extractMessage(exception: unknown): { message: string; details?: unknown } {
+    if (!(exception instanceof HttpException)) {
+      return { message: 'Internal server error' };
+    }
+
+    const response = exception.getResponse();
+
+    if (typeof response === 'string') {
+      return { message: response };
+    }
+
+    if (response && typeof response === 'object') {
+      const payload = response as { message?: unknown; error?: unknown };
+
+      if (Array.isArray(payload.message)) {
+        return {
+          message: 'Validation failed',
+          details: payload.message,
+        };
+      }
+
+      if (typeof payload.message === 'string') {
+        return { message: payload.message };
+      }
+    }
+
+    return { message: exception.message };
   }
 }
