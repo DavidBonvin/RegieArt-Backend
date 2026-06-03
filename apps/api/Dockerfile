@@ -12,6 +12,7 @@ COPY apps/api ./apps/api
 
 # Install dependencies and build
 RUN pnpm install
+RUN pnpm --filter @regieart/types build
 RUN pnpm --filter database prisma:generate
 RUN pnpm --filter api build
 
