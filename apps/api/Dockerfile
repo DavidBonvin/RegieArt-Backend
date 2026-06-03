@@ -1,5 +1,6 @@
 FROM node:22-alpine AS builder
 
+RUN apk add --no-cache openssl
 RUN npm install -g pnpm
 WORKDIR /app
 
