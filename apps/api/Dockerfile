@@ -1,4 +1,4 @@
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 RUN npm install -g pnpm
 WORKDIR /app
@@ -18,7 +18,7 @@ RUN pnpm --filter api build
 
 FROM node:20-alpine AS runner
 
-RUN npm install -g pnpm
+RUN npm install -g pnpm prisma
 WORKDIR /app
 
 # Copy the necessary files from the builder
@@ -39,4 +39,4 @@ EXPOSE 3000
 # Run Prisma migrations then start the server.
 # ../../node_modules/.bin/prisma resolves to /app/node_modules/.bin/prisma (root workspace bin).
 # ../../packages/database/prisma/schema.prisma resolves to /app/packages/database/prisma/schema.prisma.
-CMD ["sh", "-c", "../../node_modules/.bin/prisma migrate deploy --schema=../../packages/database/prisma/schema.prisma && node dist/main"]
+CMD ["sh", "-c", "prisma migrate deploy --schema=../../packages/database/prisma/schema.prisma && node dist/main"]
