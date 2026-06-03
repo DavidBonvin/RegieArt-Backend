@@ -13,4 +13,4 @@ COPY realm-export.json /opt/keycloak/data/import/realm-export.json
 EXPOSE 8080
 
 ENTRYPOINT ["/opt/keycloak/bin/kc.sh"]
-CMD ["start", "--import-realm"]
+CMD ["start", "--import-realm", "--hostname-strict=false", "--hostname-strict-https=false", "--http-enabled=true", "--health-enabled=true"]
