@@ -19,9 +19,9 @@ RUN pnpm --filter @regieart/types build
 RUN pnpm --filter database prisma:generate
 RUN pnpm --filter api build
 
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 
-RUN npm install -g pnpm prisma
+RUN npm install -g pnpm
 WORKDIR /app
 
 # Copy the necessary files from the builder
@@ -42,4 +42,4 @@ EXPOSE 3000
 # Run Prisma migrations then start the server.
 # ../../node_modules/.bin/prisma resolves to /app/node_modules/.bin/prisma (root workspace bin).
 # ../../packages/database/prisma/schema.prisma resolves to /app/packages/database/prisma/schema.prisma.
-CMD ["sh", "-c", "prisma migrate deploy --schema=../../packages/database/prisma/schema.prisma && node dist/main"]
+CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy --schema=../../packages/database/prisma/schema.prisma && node dist/main"]
