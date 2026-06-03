@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import * as Sentry from '@sentry/node';
 import { ErrorResponse } from '@regieart/types';
 
 @Catch()
@@ -29,6 +30,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
       `${request.method} ${request.url} ${status} - ${message}`,
       exception instanceof Error ? exception.stack : undefined,
     );
+
+    if (status >= 500) {
+      Sentry.captureException(exception);
+    }
 
     const errorResponse: ErrorResponse = {
       success: false,
