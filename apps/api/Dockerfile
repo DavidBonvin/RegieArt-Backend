@@ -11,7 +11,10 @@ COPY packages ./packages
 COPY apps/api ./apps/api
 
 # Install dependencies and build
-RUN pnpm install
+# --ignore-scripts avoids pnpm 10 blocking postinstall hooks
+# then rebuild only the packages that need native binaries
+RUN pnpm install --ignore-scripts
+RUN pnpm rebuild @prisma/engines @prisma/client @nestjs/core
 RUN pnpm --filter @regieart/types build
 RUN pnpm --filter database prisma:generate
 RUN pnpm --filter api build
