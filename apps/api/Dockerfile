@@ -21,6 +21,7 @@ RUN pnpm --filter api build
 
 FROM node:22-alpine AS runner
 
+RUN apk add --no-cache openssl
 RUN npm install -g pnpm
 WORKDIR /app
 
