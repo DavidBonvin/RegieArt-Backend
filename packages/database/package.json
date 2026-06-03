@@ -2,9 +2,10 @@
   "name": "@regieart/database",
   "version": "1.0.0",
   "private": true,
-  "main": "index.ts",
-  "types": "index.ts",
+  "main": "index.js",
+  "types": "index.d.ts",
   "scripts": {
+    "build": "tsc",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:prod": "prisma migrate deploy",
@@ -15,6 +16,7 @@
     "@prisma/client": "^5.10.0"
   },
   "devDependencies": {
-    "prisma": "^5.10.0"
+    "prisma": "^5.10.0",
+    "typescript": "^5.4.3"
   }
 }

@@ -16,7 +16,8 @@ COPY apps/api ./apps/api
 RUN pnpm install --ignore-scripts
 RUN pnpm rebuild @prisma/engines @prisma/client @nestjs/core
 RUN pnpm --filter @regieart/types build
-RUN pnpm --filter database prisma:generate
+RUN pnpm --filter @regieart/database prisma:generate
+RUN pnpm --filter @regieart/database build
 RUN pnpm --filter api build
 
 FROM node:22-alpine AS runner

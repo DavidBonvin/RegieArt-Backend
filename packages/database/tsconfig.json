@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "outDir": ".",
+    "declaration": true,
+    "module": "commonjs",
+    "target": "ES2021",
+    "strict": true,
+    "skipLibCheck": true
+  },
+  "include": ["index.ts"]
+}
