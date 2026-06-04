@@ -38,3 +38,6 @@ coverage/
 
 # Keycloak data (runtime)
 keycloak-data/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
