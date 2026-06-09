@@ -36,6 +36,7 @@ model User {
   // Relaciones
   memberships OrganizationMember[]
   inviteLinks InviteLink[]
+  assets      Asset[]
 
   @@index([email])
   @@map("users")
@@ -58,6 +59,7 @@ model Organization {
   // Relaciones
   members     OrganizationMember[]
   inviteLinks InviteLink[]
+  assets      Asset[]
 
   @@index([slug])
   @@map("organizations")
@@ -104,6 +106,79 @@ model InviteLink {
   @@map("invite_links")
 }
 
+// ─── ASSETS (Archivos en Cloudflare R2) ──────────────────────
+// Registro de metadatos de cada archivo subido a R2.
+// La key de R2 es la fuente de verdad de la ruta; este modelo
+// almacena el contexto semántico para búsqueda, trazabilidad y UX.
+
+model Asset {
+  id           String      @id @default(cuid())
+
+  // ── Identidad en R2 ───────────────────────────────────────
+  key          String      @unique               // Ruta en R2 (determinista, normalizada)
+  assetType    AssetType                         // Tipo semántico del archivo
+  contentType  String                            // MIME type verificado (ej. audio/mpeg)
+  sizeBytes    BigInt                            // Peso real en bytes (BigInt para videos > 2 GB)
+  status       AssetStatus @default(PENDING)     // Ciclo de vida del asset
+  etag         String?                           // ETag de R2 (checksum de integridad)
+
+  // ── Metadatos de visualización ────────────────────────────
+  displayName  String?                           // Nombre legible: "Afiche Temporada 2026"
+  originalName String?                           // Nombre original del archivo en el disco del usuario
+  description  String?                           // Descripción libre del contenido
+  tags         String[]    @default([])          // Etiquetas para filtrado: ["temporada-2026"]
+  language     String?                           // ISO 639-1: "es", "fr", "en" (partituras / docs)
+
+  // ── Metadatos técnicos de media ───────────────────────────
+  // Populados opcionalmente en el confirm o por un job de análisis posterior
+  durationSeconds Float?                         // Duración en segundos (audio / video)
+  width           Int?                           // Ancho en píxeles (imágenes / video)
+  height          Int?                           // Alto en píxeles (imágenes / video)
+  pageCount       Int?                           // Número de páginas (PDFs / partituras)
+  bitrate         Int?                           // Bitrate en kbps (audio / video)
+
+  // ── Multipart upload ─────────────────────────────────────
+  // Para archivos > 50 MB subidos con S3 Multipart Upload
+  isMultipart   Boolean    @default(false)
+  uploadId      String?                          // ID del multipart en curso (S3)
+  partCount     Int?                             // Número de partes completadas
+
+  // ── Relaciones de negocio ─────────────────────────────────
+  uploadedById  String                           // Usuario que generó la URL (siempre presente)
+  orgId         String?                          // Organización propietaria (si aplica)
+  songId        String?                          // Referencia a canción del repertorio
+  eventId       String?                          // Referencia a evento
+  memberId      String?                          // Miembro objetivo (docs legales RRHH)
+
+  // ── Versionado ───────────────────────────────────────────
+  version       Int         @default(1)          // Incrementa cada vez que se reemplaza el archivo
+  replacesId    String?                          // ID del asset que este reemplaza (historial)
+
+  // ── Expiración y control de acceso ───────────────────────
+  isPublic      Boolean     @default(false)      // true = accesible por CDN sin firma
+  expiresAt     DateTime?                        // Documentos temporales (contratos por evento)
+
+  // ── Auditoría ────────────────────────────────────────────
+  createdAt     DateTime    @default(now())
+  confirmedAt   DateTime?                        // Timestamp del confirm-upload exitoso
+  deletedAt     DateTime?                        // Soft delete (la key en R2 sigue viva hasta el GC)
+  updatedAt     DateTime    @updatedAt
+
+  // ── Relaciones ORM ───────────────────────────────────────
+  uploadedBy    User         @relation(fields: [uploadedById], references: [id])
+  organization  Organization? @relation(fields: [orgId], references: [id])
+
+  @@index([orgId])
+  @@index([uploadedById])
+  @@index([assetType])
+  @@index([status])
+  @@index([songId])
+  @@index([eventId])
+  @@index([createdAt])
+  @@index([tags])
+  @@map("assets")
+}
+
 // ─── ENUMS ───────────────────────────────────────────────────
 
 enum MemberRole {
@@ -111,4 +186,26 @@ enum MemberRole {
   ADMIN          // Puede gestionar miembros y eventos.
   MEMBER         // Músico/integrante estándar.
   EXTERNAL_TECH  // Técnico externo. Acceso limitado a eventos asignados.
+}
+
+// Estado del ciclo de vida de un archivo en el sistema de storage
+enum AssetStatus {
+  PENDING     // URL generada, archivo no subido o subida no confirmada aún
+  CONFIRMED   // HeadObject OK — el archivo existe en R2 y está listo para usar
+  PROCESSING  // Análisis post-confirmación en curso (virus scan, transcripción)
+  READY       // Procesamiento completado — listo para servir con todos los metadatos
+  ARCHIVED    // Movido a cold storage (Cloudflare R2 Infrequent Access)
+  DELETED     // Soft delete — pendiente de limpieza real en R2 por el cron job
+}
+
+// Tipo semántico del archivo — determina política de MIME, tamaño y ruta
+enum AssetType {
+  USER_AVATAR
+  ORG_BANNER
+  AUDIO_TRACK
+  MUSIC_SCORE
+  FINANCIAL_RECEIPT
+  TECHNICAL_FILE
+  REFERENCE_VIDEO
+  LEGAL_DOCUMENT
 }

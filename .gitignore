@@ -39,5 +39,8 @@ coverage/
 # Keycloak data (runtime)
 keycloak-data/
 
+# Local test media files
+MediasTest/
+
 # TypeScript incremental build cache
 *.tsbuildinfo

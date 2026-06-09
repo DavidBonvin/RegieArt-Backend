@@ -210,9 +210,20 @@ Tabla `organization_members` con clave única `(userId, organizationId)`.
 ```env
 NODE_ENV=production
 DATABASE_URL=${{Postgres.DATABASE_URL}}
+REDIS_URL=${{Redis.REDIS_URL}}
 KEYCLOAK_URL=https://keycloak-production-b2ce.up.railway.app
 KEYCLOAK_REALM=regieart
 CORS_ORIGINS=http://localhost:3001   # ← actualizar con URL del frontend real
+
+# ─── Cloudflare R2 (StorageModule) ───────────────────────────
+# Obtener en: Cloudflare Dashboard → R2 → Settings → S3 API
+STORAGE_ENDPOINT=https://<accountid>.r2.cloudflarestorage.com
+STORAGE_BUCKET_NAME=regieart-media-production
+STORAGE_ACCESS_KEY_ID=<r2-access-key-id>
+STORAGE_SECRET_ACCESS_KEY=<r2-secret-access-key>
+# Opcional: URL base del CDN público (ej. Cloudflare R2 custom domain)
+# Si no está configurada, todas las descargas se firman directamente.
+# STORAGE_CDN_URL=https://cdn.regieart.com
 ```
 
 ### keycloak (en Railway)
