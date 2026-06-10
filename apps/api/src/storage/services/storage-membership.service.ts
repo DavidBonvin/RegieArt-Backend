@@ -32,28 +32,32 @@ export class StorageMembershipService {
     const cacheKey = `storage:membership:${userId}:${orgId}`;
     const client = this.redis.getClient();
 
-    const cached = await client.get(cacheKey);
+    // Redis is optional — if unavailable, fall through to DB
+    try {
+      const cached = await client.get(cacheKey);
 
-    // Caché positivo: el usuario es miembro confirmado → no tocar la DB
-    if (cached === '1') return;
+      if (cached === '1') return;
 
-    // Caché negativo: ya sabemos que NO es miembro → rechazar de inmediato
-    if (cached === '0') {
-      throw new ForbiddenException(
-        'No tienes acceso a los recursos de esta organización.',
-      );
+      if (cached === '0') {
+        throw new ForbiddenException(
+          'No tienes acceso a los recursos de esta organización.',
+        );
+      }
+    } catch (err) {
+      // Re-throw business exceptions (ForbiddenException), swallow Redis errors
+      if (err instanceof ForbiddenException) throw err;
     }
 
-    // Cache miss: consultar la DB y escribir el resultado para próximas llamadas
+    // Cache miss or Redis unavailable: query DB
     const membership = await this.prisma.organizationMember.findUnique({
       where: { userId_organizationId: { userId, organizationId: orgId } },
-      select: { id: true }, // Solo verificamos existencia, no necesitamos los datos
+      select: { id: true },
     });
 
     const isMember = membership !== null;
 
-    // Persistir resultado con TTL — EX = tiempo de expiración en segundos
-    await client.set(cacheKey, isMember ? '1' : '0', 'EX', MEMBERSHIP_CACHE_TTL_SECONDS);
+    // Write to cache only if Redis is available (fire-and-forget)
+    client.set(cacheKey, isMember ? '1' : '0', 'EX', MEMBERSHIP_CACHE_TTL_SECONDS).catch(() => {});
 
     if (!isMember) {
       throw new ForbiddenException(
