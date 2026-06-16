@@ -33,6 +33,7 @@ import {
 // Mapa de string → enum de Prisma (los valores son idénticos en mayúsculas)
 const ASSET_TYPE_MAP: Record<AssetType, PrismaAssetType> = {
   [AssetType.USER_AVATAR]: PrismaAssetType.USER_AVATAR,
+  [AssetType.USER_BANNER]: PrismaAssetType.USER_BANNER,
   [AssetType.ORG_BANNER]: PrismaAssetType.ORG_BANNER,
   [AssetType.AUDIO_TRACK]: PrismaAssetType.AUDIO_TRACK,
   [AssetType.MUSIC_SCORE]: PrismaAssetType.MUSIC_SCORE,

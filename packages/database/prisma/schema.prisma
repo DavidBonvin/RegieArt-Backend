@@ -27,6 +27,7 @@ model User {
   firstName   String?
   lastName    String?
   avatarUrl   String?
+  bannerUrl   String?
   phone       String?
   bio         String?
   isActive    Boolean  @default(true)
@@ -201,6 +202,7 @@ enum AssetStatus {
 // Tipo semántico del archivo — determina política de MIME, tamaño y ruta
 enum AssetType {
   USER_AVATAR
+  USER_BANNER
   ORG_BANNER
   AUDIO_TRACK
   MUSIC_SCORE

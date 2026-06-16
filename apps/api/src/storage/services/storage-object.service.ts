@@ -27,6 +27,7 @@ import { ConfirmUploadDto } from '../dto/confirm-upload.dto';
 import { StorageMembershipService } from './storage-membership.service';
 import { StorageAssetService, AssetResponse } from './storage-asset.service';
 import { StoragePresignedService } from './storage-presigned.service';
+import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class StorageObjectService {
@@ -38,6 +39,7 @@ export class StorageObjectService {
     private readonly membership: StorageMembershipService,
     private readonly assetService: StorageAssetService,
     private readonly presigned: StoragePresignedService,
+    private readonly prisma: PrismaService,
   ) {}
 
   // ── Confirmación post-upload ────────────────────────────────
@@ -96,6 +98,18 @@ export class StorageObjectService {
     this.logger.log(
       `Upload confirmado: user="${userId}" key="${dto.key}" assetId="${confirmed.id}"`,
     );
+
+    // If the uploaded asset is a profile image, update the canonical URL on the user record.
+    // This ensures GET /users/me always returns up-to-date avatar/banner without extra queries.
+    if (dto.assetType === AssetType.USER_AVATAR || dto.assetType === AssetType.USER_BANNER) {
+      const cdnKey = dto.assetType === AssetType.USER_AVATAR ? 'avatarUrl' : 'bannerUrl';
+      // Build the public key path — R2 key without signed parameters
+      const publicPath = `${process.env['STORAGE_CDN_URL'] ?? `https://${process.env['STORAGE_BUCKET_NAME']}.r2.cloudflarestorage.com`}/${dto.key}`;
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { [cdnKey]: publicPath },
+      }).catch(() => {}); // Non-critical — profile still works via storage endpoint
+    }
 
     // Obtener el asset completo para la respuesta
     const asset = await this.assetService.findByKey(dto.key);

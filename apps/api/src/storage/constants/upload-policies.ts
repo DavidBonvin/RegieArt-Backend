@@ -15,6 +15,7 @@ export const MB = 1024 * 1024;
 // ─── Enum de tipos de activo soportados por la plataforma ────
 export enum AssetType {
   USER_AVATAR = 'user-avatar',
+  USER_BANNER = 'user-banner',
   ORG_BANNER = 'org-banner',
   AUDIO_TRACK = 'audio-track',
   MUSIC_SCORE = 'music-score',
@@ -62,6 +63,14 @@ export const UPLOAD_POLICIES: Record<AssetType, UploadPolicy> = {
     maxSizeBytes: 2 * MB,
     requiredParams: ['userId'],
     buildKey: ({ userId }) => `profiles/${userId}/avatar.jpg`,
+  },
+
+  // Banner de perfil personal del usuario (similar a LinkedIn/Facebook)
+  [AssetType.USER_BANNER]: {
+    allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+    maxSizeBytes: 5 * MB,
+    requiredParams: ['userId'],
+    buildKey: ({ userId }) => `profiles/${userId}/banner.jpg`,
   },
 
   // Banner principal de una organización/banda
