@@ -86,6 +86,7 @@ export class StorageCleanupService {
 
   // ── Job 2: Purgar assets soft-deleted de R2 ────────────────
   // Frecuencia: cada día a las 3:00 AM.
+  // Solo procesa assets con deletedAt < 24h atrás (período de gracia ante borrados accidentales).
   // Lock: garantiza que solo una instancia purga a la vez.
   @Cron('0 3 * * *')
   async purgeDeletedAssets(): Promise<void> {

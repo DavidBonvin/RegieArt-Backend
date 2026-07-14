@@ -41,6 +41,13 @@ const UPLOAD_EXPIRY_SECONDS = 900;    // 15 minutos para completar la subida
 const DOWNLOAD_EXPIRY_SECONDS = 300;  // 5 minutos para acceder al archivo
 const DOWNLOAD_CACHE_TTL = 240;       // 4 minutos en caché Redis (expira antes que la URL)
 
+// Tipos de activo que contienen datos personales sensibles (contratos, documentos legales,
+// recibos financieros). Sus URLs de descarga usan una expiración corta de 1 minuto
+// y nunca se cachean en Redis — cada petición genera una firma criptográfica nueva.
+// Usar string literals de Prisma para no acoplar este servicio al enum de Prisma.
+const SENSITIVE_ASSET_TYPES = new Set(['LEGAL_DOCUMENT', 'FINANCIAL_RECEIPT']);
+const SENSITIVE_DOWNLOAD_EXPIRY_SECONDS = 60; // 1 minuto
+
 // Prefijo de caché Redis para URLs de descarga
 const DOWNLOAD_URL_CACHE_PREFIX = 'storage:download-url:';
 
@@ -189,7 +196,9 @@ export class StoragePresignedService {
   // Fast path CDN:
   //   - Si el asset tiene isPublic=true y CDN está configurado, devuelve URL pública
   //     directamente sin tocar R2 ni Redis (ahorra latencia + coste de firma).
-  async generateDownloadUrl(userId: string, key: string): Promise<string> {
+  // assetType: el tipo Prisma del asset (ej. 'LEGAL_DOCUMENT'). Si se pasa y corresponde
+  // a un tipo sensible, se usa expiración corta (1 min) y se omite la caché Redis.
+  async generateDownloadUrl(userId: string, key: string, assetType?: string): Promise<string> {
     // ── 1. Ownership check ──────────────────────────────────────
     if (key.startsWith('profiles/')) {
       const ownerSegment = key.split('/')[1];
@@ -219,19 +228,26 @@ export class StoragePresignedService {
       }
     }
 
+    // Documentos sensibles: URL de vida corta (1 min) sin caché Redis.
+    // Cada descarga requiere una petición al backend → trazabilidad + mínima exposición.
+    const isSensitive = assetType !== undefined && SENSITIVE_ASSET_TYPES.has(assetType);
+    const expirySeconds = isSensitive ? SENSITIVE_DOWNLOAD_EXPIRY_SECONDS : DOWNLOAD_EXPIRY_SECONDS;
+
     const cacheKey = `${DOWNLOAD_URL_CACHE_PREFIX}${key}`;
 
-    // ── 3. Buscar en caché Redis ────────────────────────────────
-    try {
-      const redis = this.redis.getClient();
-      const cached = await redis.get(cacheKey);
-      if (cached) {
-        this.logger.debug(`Download URL cache HIT: key="${key}"`);
-        return cached;
+    // ── 3. Buscar en caché Redis (omitir para tipos sensibles) ──
+    if (!isSensitive) {
+      try {
+        const redis = this.redis.getClient();
+        const cached = await redis.get(cacheKey);
+        if (cached) {
+          this.logger.debug(`Download URL cache HIT: key="${key}"`);
+          return cached;
+        }
+      } catch (cacheError) {
+        // Si Redis falla, continuamos sin caché — nunca bloquear la descarga
+        this.logger.warn(`Redis no disponible para cache de download URL: ${String(cacheError)}`);
       }
-    } catch (cacheError) {
-      // Si Redis falla, continuamos sin caché — nunca bloquear la descarga
-      this.logger.warn(`Redis no disponible para cache de download URL: ${String(cacheError)}`);
     }
 
     // ── 4. Firmar URL con R2 ────────────────────────────────────
@@ -239,18 +255,22 @@ export class StoragePresignedService {
       const url = await getSignedUrl(
         this.s3,
         new GetObjectCommand({ Bucket: this.bucket, Key: key }),
-        { expiresIn: DOWNLOAD_EXPIRY_SECONDS },
+        { expiresIn: expirySeconds },
       );
 
-      // 3. Guardar en caché (TTL = 4 min, expira antes que la URL de 5 min)
-      try {
-        const redis = this.redis.getClient();
-        await redis.setex(cacheKey, DOWNLOAD_CACHE_TTL, url);
-      } catch {
-        // Error de escritura en caché — no crítico
+      // Guardar en caché solo para tipos no sensibles
+      if (!isSensitive) {
+        try {
+          const redis = this.redis.getClient();
+          await redis.setex(cacheKey, DOWNLOAD_CACHE_TTL, url);
+        } catch {
+          // Error de escritura en caché — no crítico
+        }
       }
 
-      this.logger.debug(`Download URL generada y cacheada: key="${key}"`);
+      this.logger.debug(
+        `Download URL generada: key="${key}" expiry=${expirySeconds}s sensitive=${isSensitive}`,
+      );
       return url;
     } catch (error) {
       this.logger.error(

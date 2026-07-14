@@ -87,8 +87,8 @@ export class StorageService {
       select: { organizationId: true },
     });
     const orgIds = memberships.map((m) => m.organizationId);
-    const { key } = await this.assetService.assertCanDownload(assetId, userId, orgIds);
-    return this.presigned.generateDownloadUrl(userId, key);
+    const { key, assetType } = await this.assetService.assertCanDownload(assetId, userId, orgIds);
+    return this.presigned.generateDownloadUrl(userId, key, assetType);
   }
 
   async searchAssets(userId: string, dto: SearchAssetsDto) {
@@ -117,11 +117,10 @@ export class StorageService {
     });
     const orgIds = memberships.map((m) => m.organizationId);
 
-    // Soft delete en DB
+    // Soft delete en DB: status=DELETED, deletedAt=now()
+    // El cron purgeDeletedAssets (cada noche a las 3 AM) elimina el objeto de R2
+    // después de 24h — esto da una ventana de recuperación ante borrados accidentales.
     const deleted = await this.assetService.softDelete(assetId, userId, orgIds);
-
-    // Hard delete inmediato en R2 (no esperar al cron)
-    await this.object.deleteObject(deleted.key);
 
     return { id: deleted.id, key: deleted.key, deleted: true };
   }

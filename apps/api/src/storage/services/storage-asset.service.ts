@@ -161,16 +161,16 @@ export class StorageAssetService {
     id: string,
     userId: string,
     orgIds: string[],
-  ): Promise<{ key: string }> {
+  ): Promise<{ key: string; assetType: string }> {
     const asset = await this.prisma.asset.findUnique({
       where: { id, deletedAt: null },
-      select: { id: true, key: true, uploadedById: true, orgId: true, isPublic: true },
+      select: { id: true, key: true, assetType: true, uploadedById: true, orgId: true, isPublic: true },
     });
 
     if (!asset) throw new NotFoundException(`Asset "${id}" no encontrado.`);
 
     // Assets públicos: cualquier usuario autenticado puede descargarlos
-    if (asset.isPublic) return { key: asset.key };
+    if (asset.isPublic) return { key: asset.key, assetType: asset.assetType };
 
     const canAccess =
       asset.uploadedById === userId ||
@@ -180,7 +180,7 @@ export class StorageAssetService {
       throw new ForbiddenException('No tienes permiso para descargar este archivo.');
     }
 
-    return { key: asset.key };
+    return { key: asset.key, assetType: asset.assetType };
   }
 
   // ── Obtener un asset por ID ────────────────────────────────
@@ -333,9 +333,12 @@ export class StorageAssetService {
   }
 
   // ── Listar assets DELETED pendientes de purga real en R2 ──
+  // Solo purga registros con más de 24h borrados → período de gracia ante borrados accidentales.
+  // El cron llama esto a las 3 AM; en ese momento los assets recién borrados (< 24h) se omiten.
   async findDeletedForPurge(): Promise<{ id: string; key: string }[]> {
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000); // hace 24 horas
     return this.prisma.asset.findMany({
-      where: { status: AssetStatus.DELETED, deletedAt: { not: null } },
+      where: { status: AssetStatus.DELETED, deletedAt: { not: null, lt: cutoff } },
       select: { id: true, key: true },
       take: 100, // procesar en lotes
     });

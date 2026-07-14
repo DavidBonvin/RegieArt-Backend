@@ -1,963 +1,1110 @@
-# StorageModule — Documentación completa
+# StorageModule — Documentación Completa
 
-> **Fecha de última actualización:** 09 de junio de 2026  
-> **Estado:** Producción (12 endpoints activos, 30 tests unitarios en verde)  
-> **Probado en real con:** archivos SVG, PNG e inicio de multipart con video simulado de 257 MB
-
----
-
-## Índice
-
-1. [¿Qué hace este módulo?](#1-qué-hace-este-módulo)
-2. [Cómo funciona la arquitectura interna](#2-cómo-funciona-la-arquitectura-interna)
-3. [Autenticación — cómo obtener el token](#3-autenticación--cómo-obtener-el-token)
-4. [Tipos de archivo soportados (AssetType)](#4-tipos-de-archivo-soportados-assettype)
-5. [Todos los endpoints — contratos exactos](#5-todos-los-endpoints--contratos-exactos)
-   - [EP-01 — POST /storage/presigned-upload](#ep-01--post-storagepresigned-upload)
-   - [EP-02 — PUT directo a Cloudflare R2](#ep-02--put-directo-a-cloudflare-r2)
-   - [EP-03 — POST /storage/confirm-upload](#ep-03--post-storageconfirm-upload)
-   - [EP-04 — GET /storage/presigned-download](#ep-04--get-storagepresigned-download)
-   - [EP-05 — GET /storage/assets/:id/download](#ep-05--get-storageassetsiddownload)
-   - [EP-06 — GET /storage/objects](#ep-06--get-storageobjects)
-   - [EP-07 — GET /storage/assets](#ep-07--get-storageassets)
-   - [EP-08 — GET /storage/assets/:id](#ep-08--get-storageassetsid)
-   - [EP-09 — PATCH /storage/assets/:id](#ep-09--patch-storageassetsid)
-   - [EP-10 — DELETE /storage/assets/:id](#ep-10--delete-storageassetsid)
-   - [EP-11 — POST /storage/multipart/initiate](#ep-11--post-storagemultipartinitiate)
-   - [EP-12 — POST /storage/multipart/complete](#ep-12--post-storagemultipartcomplete)
-   - [EP-13 — DELETE /storage/multipart/abort](#ep-13--delete-storagemultipartabort)
-6. [Lo que se probó en real y los resultados](#6-lo-que-se-probó-en-real-y-los-resultados)
-7. [Bugs encontrados y cómo se corrigieron](#7-bugs-encontrados-y-cómo-se-corrigieron)
-8. [Mejoras implementadas (TDD)](#8-mejoras-implementadas-tdd)
-9. [Base de datos — estructura del Asset](#9-base-de-datos--estructura-del-asset)
-10. [Cron jobs automáticos](#10-cron-jobs-automáticos)
-11. [Lo que NO se probó / limitaciones conocidas](#11-lo-que-no-se-probó--limitaciones-conocidas)
-12. [Guía de consumo para el frontend — buenas prácticas](#12-guía-de-consumo-para-el-frontend--buenas-prácticas)
+> **Última actualización:** 16 de junio de 2026  
+> **Estado:** Producción activa — 13 endpoints, 30 tests unitarios en verde  
+> **Probado en producción con:** SVG (1.28 MB), MP3 (8.41 MB), video pequeño (0.56 MB), video grande multipart (257.77 MB — 26 partes)  
+> **Audiencia:** Equipo frontend (React Native / Expo / Web) y jurado técnico
 
 ---
 
-## 1. ¿Qué hace este módulo?
+## Tabla de Contenidos
 
-El StorageModule gestiona todos los archivos multimedia de RégieArt: avatares de usuario, banners de organización, partituras, pistas de audio, videos de referencia, documentos legales, recibos financieros y archivos técnicos de show.
-
-**El flujo siempre tiene tres pasos:**
-
-```
-Frontend                   Backend (NestJS)              Cloudflare R2
-   │                              │                            │
-   │── POST /presigned-upload ───▶│ Valida, firma URL          │
-   │◀─ { uploadUrl, key } ────────│ Crea Asset PENDING en DB   │
-   │                              │                            │
-   │── PUT (directo) ─────────────│────────────────────────────▶ Sube el archivo
-   │◀─ 200 OK + ETag ─────────────│────────────────────────────  (sin pasar por el backend)
-   │                              │                            │
-   │── POST /confirm-upload ─────▶│ Verifica en R2 (HeadObject)│
-   │◀─ { asset CONFIRMED } ───────│ Actualiza DB PENDING→CONFIRMED
-```
-
-**Por qué el cliente sube directo a R2 y no a la API:**
-- Evita que el backend procese gigabytes de datos
-- Cloudflare absorbe el ancho de banda
-- El backend solo valida metadatos (< 1 ms por petición)
+1. [Arquitectura General](#1-arquitectura-general)
+2. [Infraestructura y Configuración](#2-infraestructura-y-configuración)
+3. [Archivos que Componen el Módulo](#3-archivos-que-componen-el-módulo)
+4. [Modelo de Datos — Asset](#4-modelo-de-datos--asset)
+5. [Tipos de Activo (AssetType)](#5-tipos-de-activo-assettype)
+6. [Todos los Endpoints](#6-todos-los-endpoints)
+7. [Flujo Completo — Archivo Pequeño (≤ 50 MB)](#7-flujo-completo--archivo-pequeño--50-mb)
+8. [Flujo Completo — Archivo Grande (> 50 MB — Multipart)](#8-flujo-completo--archivo-grande--50-mb--multipart)
+9. [Flujo de Descarga](#9-flujo-de-descarga)
+10. [Seguridad en Capas](#10-seguridad-en-capas)
+11. [Caché con Redis](#11-caché-con-redis)
+12. [Jobs de Limpieza Automática](#12-jobs-de-limpieza-automática)
+13. [Formato de Respuestas](#13-formato-de-respuestas)
+14. [Códigos de Error](#14-códigos-de-error)
+15. [Guía de Implementación Frontend](#15-guía-de-implementación-frontend)
+16. [Preguntas Frecuentes — Jurado](#16-preguntas-frecuentes--jurado)
 
 ---
 
-## 2. Cómo funciona la arquitectura interna
+## 1. Arquitectura General
 
 ```
-StorageModule
-├── storage.controller.ts         → 12 endpoints HTTP (capa de transporte)
-├── storage.service.ts            → Fachada pública (único punto de entrada)
-└── services/
-    ├── storage-presigned.service.ts  → Firma URLs con AWS SDK v3
-    ├── storage-asset.service.ts      → CRUD sobre tabla `assets` en PostgreSQL
-    ├── storage-multipart.service.ts  → Protocolo S3 Multipart para archivos > 50 MB
-    ├── storage-object.service.ts     → Operaciones directas en R2 (list, delete, head)
-    └── storage-cleanup.service.ts    → Cron jobs con distributed lock en Redis
+┌─────────────────────────────────────────────────────────────┐
+│                     App Mobile / Web                         │
+│                  (React Native / Expo)                       │
+└────────────────────────┬────────────────────────────────────┘
+                         │  JWT Bearer Token
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│              NestJS API  (Railway)                           │
+│                                                             │
+│  StorageController → StorageService (fachada)               │
+│       ├─ StoragePresignedService   (firma URLs)             │
+│       ├─ StorageObjectService      (confirm / delete)       │
+│       ├─ StorageMembershipService  (verifica membresía)     │
+│       ├─ StorageAssetService       (CRUD en PostgreSQL)     │
+│       ├─ StorageMultipartService   (archivos > 50 MB)       │
+│       ├─ StorageCleanupService     (cron jobs)              │
+│       └─ StorageCdnService         (URLs públicas CDN)      │
+└────────────┬────────────────────────┬───────────────────────┘
+             │                        │
+             ▼                        ▼
+    ┌────────────────┐      ┌──────────────────┐
+    │  PostgreSQL    │      │  Cloudflare R2   │
+    │  (metadata)    │      │  (archivos)      │
+    └────────────────┘      └──────────────────┘
+             │
+             ▼
+    ┌────────────────┐
+    │  Redis         │
+    │  (caché URLs,  │
+    │  membresía,    │
+    │  locks cron)   │
+    └────────────────┘
 ```
 
-**Seguridad en 5 capas (en orden de ejecución):**
+### Principio clave: el archivo NUNCA pasa por el backend
 
-| Capa | Quién la aplica | Qué verifica |
-|------|----------------|--------------|
-| 1 | `JwtAuthGuard` | JWT de Keycloak válido y no expirado |
-| 2 | `@CurrentUser()` | Extrae el `userId` del token (no del body) |
-| 3 | `ValidationPipe` | Valida y sanitiza todos los DTOs |
-| 4 | `StorageService` | Política de MIME, tamaño y membresía de org |
-| 5 | Cloudflare R2 | Rechaza el PUT si el `Content-Length` no coincide con el firmado |
+El backend solo genera **URLs firmadas**. El archivo viaja directamente desde el dispositivo del usuario a Cloudflare R2 (y viceversa). Esto significa:
+
+- **Cero carga en la API** por transferencias de archivos
+- **Máxima velocidad**: el usuario sube/baja desde los servidores de Cloudflare más cercanos a su ubicación
+- **Sin límites de tamaño en la API**: el backend firma la URL pero no procesa el binario
 
 ---
 
-## 3. Autenticación — cómo obtener el token
+## 2. Infraestructura y Configuración
 
-Todos los endpoints requieren un `Authorization: Bearer <token>` en el header.
+### Servicios en Railway (producción)
 
-**Obtener token desde Keycloak:**
+| Servicio | URL / Descripción |
+|---|---|
+| **RegieArt-Backend** | `https://regieart-backend-production.up.railway.app` |
+| **PostgreSQL** | DB interna Railway — metadatos de assets |
+| **Redis** | `redis://default:***@redis.railway.internal:6379` — caché y locks |
+| **Keycloak** | `https://keycloak-production-b2ce.up.railway.app` |
 
-```http
-POST http://localhost:8090/realms/regieart/protocol/openid-connect/token
-Content-Type: application/x-www-form-urlencoded
+### Variables de entorno del backend (Railway → RegieArt-Backend)
 
-grant_type=password
-&client_id=regieart-mobile
-&username=<email>
-&password=<contraseña>
+| Variable | Descripción |
+|---|---|
+| `NODE_ENV` | `production` |
+| `DATABASE_URL` | Conexión PostgreSQL |
+| `REDIS_URL` | `${{Redis.REDIS_URL}}` — referencia al servicio Redis del proyecto |
+| `KEYCLOAK_URL` | URL base de Keycloak |
+| `KEYCLOAK_REALM` | Nombre del realm (`regieart`) |
+| `STORAGE_ENDPOINT` | `https://<account-id>.r2.cloudflarestorage.com` |
+| `STORAGE_ACCESS_KEY_ID` | API Key R2 con permisos de lectura/escritura |
+| `STORAGE_SECRET_ACCESS_KEY` | Secret de la API Key R2 |
+| `STORAGE_BUCKET_NAME` | `regieart-media-production` |
+| `STORAGE_CDN_URL` | *(Opcional)* URL del CDN custom para assets públicos |
+| `CORS_ORIGINS` | Origins permitidos (ej. `http://localhost:3001`) |
+
+### Cloudflare R2
+
+- **Protocolo**: S3-compatible — usa `@aws-sdk/client-s3` y `@aws-sdk/s3-request-presigner`
+- **Región**: `auto` (Cloudflare gestiona la distribución geográfica)
+- **Bucket**: `regieart-media-production`
+- **Acceso**: todas las URLs son firmadas con expiración — ningún archivo es accesible públicamente sin firma (excepto si `isPublic: true` con `STORAGE_CDN_URL` configurado)
+
+---
+
+## 3. Archivos que Componen el Módulo
+
+### Archivos críticos de negocio
+
+| Archivo | Rol |
+|---|---|
+| `apps/api/src/storage/storage.controller.ts` | Capa HTTP — define todos los endpoints y sus rutas |
+| `apps/api/src/storage/storage.service.ts` | Fachada — único punto de entrada público del módulo |
+| `apps/api/src/storage/constants/upload-policies.ts` | **Contrato central** — define tipos, MIME permitidos, tamaño máximo y rutas R2 |
+| `apps/api/src/storage/services/storage-presigned.service.ts` | Genera URLs firmadas de subida (PUT) y descarga (GET) |
+| `apps/api/src/storage/services/storage-object.service.ts` | Confirma uploads via HeadObject, borra objetos, actualiza avatarUrl/bannerUrl |
+| `apps/api/src/storage/services/storage-asset.service.ts` | CRUD completo sobre la tabla `assets` en PostgreSQL |
+| `apps/api/src/storage/services/storage-membership.service.ts` | Verifica que el usuario pertenece a la organización (DB + caché Redis) |
+| `apps/api/src/storage/services/storage-multipart.service.ts` | Protocolo S3 Multipart Upload para archivos > 50 MB |
+| `apps/api/src/storage/services/storage-cleanup.service.ts` | Cron jobs con locks Redis distribuidos para limpieza de assets |
+| `apps/api/src/storage/services/storage-cdn.service.ts` | URLs públicas y redimensionamiento on-the-fly via Cloudflare Image Resizing |
+| `apps/api/src/storage/providers/s3-client.provider.ts` | Inyecta S3Client, bucket name y CDN URL como singletons |
+
+### DTOs — contratos de entrada del API
+
+| Archivo | Endpoint |
+|---|---|
+| `dto/create-presigned-url.dto.ts` | `POST /storage/presigned-upload` |
+| `dto/confirm-upload.dto.ts` | `POST /storage/confirm-upload` |
+| `dto/search-assets.dto.ts` | `GET /storage/assets` |
+| `dto/update-asset.dto.ts` | `PATCH /storage/assets/:id` |
+| `dto/multipart.dto.ts` | `POST /storage/multipart/initiate`, `complete`, `abort` |
+
+### Archivos de infraestructura
+
+| Archivo | Rol |
+|---|---|
+| `apps/api/src/redis/redis.service.ts` | Cliente ioredis — `enableOfflineQueue: false` evita que cuelgue si Redis no responde |
+| `apps/api/src/app.module.ts` | ThrottlerModule in-memory (60 req/min global), registra todos los módulos |
+| `apps/api/src/main.ts` | ValidationPipe estricto, prefijo global `/api/v1`, CORS, filtro de errores global |
+| `apps/api/Dockerfile` | Build multi-stage Alpine; CMD ejecuta `prisma migrate deploy` antes de arrancar |
+| `apps/api/src/auth/strategies/keycloak-jwt.strategy.ts` | Valida JWT RS256 de Keycloak, crea usuario en DB si es la primera vez (lazy provisioning) |
+
+### Migraciones de base de datos
+
+| Migración | Qué hace |
+|---|---|
+| `20260518145827_inicio` | Crea tablas `users`, `organizations`, `organization_members`, `invite_links` |
+| `20260609101136_add_asset_model` | Crea tabla `assets` con todos sus campos |
+| `20260609133027_add_asset_search_indexes` | Añade índice GIN de full-text search sobre displayName, originalName y description |
+| `20260616150743_add_user_banner_asset_type` | `ALTER TYPE "AssetType" ADD VALUE 'USER_BANNER'` |
+| `20260616150831_add_user_banner_url` | Añade columna `bannerUrl` al modelo `User` |
+
+---
+
+## 4. Modelo de Datos — Asset
+
+```typescript
+interface Asset {
+  id:            string;       // CUID — usar para descargas y referencias en el frontend
+  key:           string;       // Ruta interna en R2 — NO exponer al usuario final
+  assetType:     AssetType;    // Tipo semántico del archivo
+  contentType:   string;       // MIME type: "audio/mpeg", "image/jpeg", etc.
+  sizeBytes:     number;       // Tamaño en bytes (BigInt en DB, serializado a number en JSON)
+  status:        AssetStatus;  // Ver ciclo de vida abajo
+  etag:          string | null;// Checksum MD5 de R2 para verificación de integridad
+
+  // Metadatos de visualización
+  displayName:   string | null;// "Le Petit Pêcheur — Bandera Roja"
+  originalName:  string | null;// "BanderaRoja.mp3" (nombre original en el dispositivo)
+  description:   string | null;// Descripción libre
+  tags:          string[];     // ["repertorio", "2026"]
+  language:      string | null;// ISO 639-1: "fr", "es", "en"
+
+  // Metadatos técnicos (opcionales — proveídos por el cliente en confirm-upload)
+  durationSeconds: number | null; // Audio/video en segundos
+  width:           number | null; // Ancho en píxeles (imágenes/video)
+  height:          number | null; // Alto en píxeles
+  bitrate:         number | null; // Bitrate en kbps (audio/video)
+  pageCount:       number | null; // Número de páginas (PDFs)
+
+  // Contexto de negocio
+  uploadedById:  string;       // userId del que subió el archivo
+  orgId:         string | null;// Organización propietaria (si aplica)
+  songId:        string | null;// Referencia a canción del repertorio
+  eventId:       string | null;// Referencia a evento
+  isPublic:      boolean;      // true = servido por CDN sin firma (avatares, banners)
+  isMultipart:   boolean;      // true si se subió con el protocolo multipart
+
+  // Auditoría
+  createdAt:     string;       // ISO 8601
+  confirmedAt:   string | null;// Timestamp del confirm-upload exitoso
+  deletedAt:     string | null;// Soft delete — R2 se limpia en el siguiente cron
+  updatedAt:     string;       // ISO 8601
+}
+
+// Ciclo de vida del asset
+type AssetStatus =
+  | 'PENDING'    // URL generada, subida no completada o no confirmada aún
+  | 'CONFIRMED'  // Archivo verificado en R2 via HeadObject — listo para usar
+  | 'PROCESSING' // En análisis post-upload (reservado para uso futuro: virus scan, transcripción)
+  | 'READY'      // Procesamiento completo — todos los metadatos disponibles
+  | 'ARCHIVED'   // Movido a cold storage (R2 Infrequent Access)
+  | 'DELETED';   // Soft delete — el cron lo elimina físicamente de R2 después de 24h
+```
+
+### Modelo User (campos relevantes para storage)
+
+```typescript
+interface UserProfile {
+  id:          string;
+  keycloakId:  string;
+  email:       string;
+  displayName: string;
+  firstName:   string | null;
+  lastName:    string | null;
+  avatarUrl:   string | null;  // Actualizado automáticamente al confirmar user-avatar
+  bannerUrl:   string | null;  // Actualizado automáticamente al confirmar user-banner
+  phone:       string | null;
+  bio:         string | null;
+  isActive:    boolean;
+  createdAt:   string;
+  updatedAt:   string;
+}
+```
+
+---
+
+## 5. Tipos de Activo (AssetType)
+
+| Valor en API | Contexto de uso | MIME permitidos | Máx | Ruta en R2 |
+|---|---|---|---|---|
+| `user-avatar` | Foto de perfil del usuario | image/jpeg, image/png | 2 MB | `profiles/{userId}/avatar.jpg` |
+| `user-banner` | Banner de perfil (estilo LinkedIn/Facebook) | image/jpeg, image/png, image/webp | 5 MB | `profiles/{userId}/banner.jpg` |
+| `org-banner` | Banner de la organización/banda | image/jpeg, image/png | 5 MB | `organizations/{orgId}/banners/main.png` |
+| `audio-track` | Pista de audio del repertorio | audio/mpeg, audio/wav, audio/ogg | 25 MB | `organizations/{orgId}/repertoire/{songId}/audio.mp3` |
+| `music-score` | Partitura (PDF o SVG) | application/pdf, image/svg+xml | 10 MB | `organizations/{orgId}/repertoire/{songId}/score.pdf` |
+| `reference-video` | Video de referencia de evento | video/mp4, video/quicktime | 300 MB | `organizations/{orgId}/events/{eventId}/videos/{uuid}.mp4` |
+| `financial-receipt` | Recibo/ticket de gastos | image/jpeg, image/png, application/pdf | 5 MB | `organizations/{orgId}/events/{eventId}/receipts/{uuid}.jpg` |
+| `technical-file` | Archivo técnico del show (patch consola) | application/xml, text/plain, application/octet-stream | 8 MB | `organizations/{orgId}/events/{eventId}/technical/{uuid}.patch` |
+| `legal-document` | Documento legal/contrato RRHH | application/pdf, image/jpeg | 10 MB | `organizations/{orgId}/legal/{uuid}.pdf` |
+
+> **Nota sobre `{uuid}`**: los tipos con UUID en la ruta tienen `serverGeneratesFileId: true` — el backend genera el UUID con `crypto.randomUUID()`, garantizando unicidad y trazabilidad sin importar el nombre original del archivo.
+
+### Parámetros requeridos en el body según el tipo
+
+| AssetType | `orgId` | `songId` | `eventId` |
+|---|---|---|---|
+| `user-avatar` | — | — | — |
+| `user-banner` | — | — | — |
+| `org-banner` | ✅ | — | — |
+| `audio-track` | ✅ | ✅ | — |
+| `music-score` | ✅ | ✅ | — |
+| `reference-video` | ✅ | — | ✅ |
+| `financial-receipt` | ✅ | — | ✅ |
+| `technical-file` | ✅ | — | ✅ |
+| `legal-document` | ✅ | — | — |
+
+---
+
+## 6. Todos los Endpoints
+
+**Base URL**: `https://regieart-backend-production.up.railway.app/api/v1`  
+**Todos los endpoints** requieren `Authorization: Bearer <token>` (excepto `/health`).  
+**Formato de respuesta**: siempre `{ success: true, data: ... }` o `{ success: false, error: { code, message } }`.
+
+---
+
+### `POST /storage/presigned-upload`
+
+Genera una URL firmada para subir un archivo directamente a R2. Crea un registro `Asset` en estado `PENDING` en PostgreSQL.
+
+**Rate limit**: 10 solicitudes por minuto por usuario.
+
+**Body completo:**
+```json
+{
+  "assetType": "audio-track",
+  "contentType": "audio/mpeg",
+  "fileSizeBytes": 8815942,
+
+  "orgId": "cmqgqntyr0002gx5bsfosjzuo",
+  "songId": "song-repertoire-001",
+
+  "displayName": "Le Petit Pêcheur — Bandera Roja",
+  "originalName": "BanderaRoja.mp3",
+  "description": "Ensayo del 10 de junio 2026",
+  "tags": ["repertorio", "2026", "en-revision"],
+  "language": "fr",
+  "isPublic": false,
+
+  "durationSeconds": 213,
+  "bitrate": 320
+}
 ```
 
 **Respuesta:**
 ```json
 {
-  "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6...",
-  "expires_in": 300,
-  "token_type": "Bearer"
-}
-```
-
-> El token expira en **5 minutos** en la configuración actual. El frontend debe detectar el 401 y refrescarlo con `refresh_token`.
-
----
-
-## 4. Tipos de archivo soportados (AssetType)
-
-> **IMPORTANTE:** Los valores del enum son **kebab-case** (minúsculas con guión). Enviar `ORG_BANNER` o `orgBanner` causa error 400.
-
-| `assetType` | MIME types permitidos | Tamaño máximo | Campos obligatorios |
-|-------------|----------------------|---------------|---------------------|
-| `user-avatar` | `image/jpeg`, `image/png` | 2 MB | — |
-| `org-banner` | `image/jpeg`, `image/png` | 5 MB | `orgId` |
-| `audio-track` | `audio/mpeg`, `audio/wav`, `audio/ogg` | 25 MB | `orgId`, `songId` |
-| `music-score` | `application/pdf`, `image/svg+xml` | 10 MB | `orgId`, `songId` |
-| `financial-receipt` | `image/jpeg`, `image/png`, `application/pdf` | 5 MB | `orgId`, `eventId` |
-| `technical-file` | `application/xml`, `text/plain`, `application/octet-stream` | 8 MB | `orgId`, `eventId` |
-| `reference-video` | `video/mp4`, `video/quicktime` | 300 MB | `orgId`, `eventId` |
-| `legal-document` | `application/pdf`, `image/jpeg` | 10 MB | `orgId` |
-
-**Rutas generadas automáticamente en R2 (el cliente no elige la ruta):**
-
-```
-user-avatar        → profiles/{userId}/avatar.jpg
-org-banner         → organizations/{orgId}/banners/main.png
-audio-track        → organizations/{orgId}/repertoire/{songId}/audio.mp3
-music-score        → organizations/{orgId}/repertoire/{songId}/score.pdf
-financial-receipt  → organizations/{orgId}/events/{eventId}/receipts/{fileId}.jpg
-technical-file     → organizations/{orgId}/events/{eventId}/technical/{fileId}.patch
-reference-video    → organizations/{orgId}/events/{eventId}/videos/{fileId}.mp4
-legal-document     → organizations/{orgId}/legal/{fileId}.pdf
-```
-
-> Los tipos con `serverGeneratesFileId: true` (financial-receipt, technical-file, reference-video, legal-document) hacen que el backend genere el `fileId` con `crypto.randomUUID()`. Si el cliente envía un `fileId`, se ignora.
-
----
-
-## 5. Todos los endpoints — contratos exactos
-
-**Base URL:** `http://localhost:3005/api/v1` (desarrollo) / `https://api.regieart.com/api/v1` (producción)
-
----
-
-### EP-01 — POST /storage/presigned-upload
-
-Genera una URL firmada para subir un archivo directamente a Cloudflare R2. Crea un registro `Asset` en estado `PENDING` en la base de datos.
-
-**Rate limit:** 10 peticiones por minuto por usuario.
-
-**Request:**
-```json
-POST /storage/presigned-upload
-Authorization: Bearer <token>
-Content-Type: application/json
-
-{
-  "assetType":    "org-banner",
-  "contentType":  "image/png",
-  "fileSizeBytes": 204800,
-  "orgId":         "cmq6dp2hz000114m3gfz16oqm",
-
-  // Opcionales de contexto (según assetType):
-  "songId":        "cuid-de-la-cancion",
-  "eventId":       "cuid-del-evento",
-
-  // Opcionales de metadatos (se guardan en DB):
-  "displayName":   "Banner temporada 2026",
-  "originalName":  "banner-final-v2.png",
-  "description":   "Banner principal para la temporada de verano",
-  "tags":          ["temporada-2026", "urgente"],
-  "language":      "es"
-}
-```
-
-> **CRÍTICO — `fileSizeBytes`:** debe ser el tamaño **exacto en bytes** del archivo que se va a subir. Si el `Content-Length` del PUT real a R2 no coincide, R2 rechaza la subida con `403 SignatureDoesNotMatch`. No redondear, no usar tamaño aproximado.
-
-**Respuesta exitosa (200):**
-```json
-{
+  "success": true,
   "data": {
-    "uploadUrl": "https://r2.cloudflare.com/regieart-media-production/organizations/.../banners/main.png?X-Amz-Signature=...",
-    "key":       "organizations/cmq6dp2hz000114m3gfz16oqm/banners/main.png",
-    "assetId":   "cmq6e7abc000214m3xyz98abc",
+    "uploadUrl": "https://regieart-media-production.<id>.r2.cloudflarestorage.com/...?X-Amz-Signature=...&X-Amz-Expires=900",
+    "key": "organizations/cmq.../repertoire/song-001/audio.mp3",
+    "assetId": "cmqgqoa9u000egx5baa8dltrx",
     "expiresIn": 900
   }
 }
 ```
 
-| Campo | Descripción |
-|-------|-------------|
-| `uploadUrl` | URL pre-firmada para el PUT. Válida **15 minutos**. |
-| `key` | Identificador del objeto en R2. Guardarlo para confirmar. |
-| `assetId` | ID del registro en PostgreSQL. |
-| `expiresIn` | Segundos de validez de la URL (900 = 15 min). |
-
-**Errores posibles:**
-
-| HTTP | Causa |
-|------|-------|
-| 400 | `assetType` incorrecto, MIME no permitido, archivo demasiado grande, falta `orgId`/`songId`/`eventId` |
-| 401 | Token ausente o expirado |
-| 403 | Usuario no es miembro de la organización indicada |
+**Siguiente paso**: `PUT uploadUrl` con el archivo binario y `Content-Type: audio/mpeg`. La URL expira en 15 minutos.
 
 ---
 
-### EP-02 — PUT directo a Cloudflare R2
+### `POST /storage/confirm-upload`
 
-Este paso **no pasa por el backend**. El cliente sube el archivo directamente a la URL del paso anterior.
+Confirma que el archivo llegó correctamente a R2. El backend hace un `HeadObject` para verificar la existencia real. Actualiza `Asset` de `PENDING` a `CONFIRMED`.
 
-```http
-PUT <uploadUrl del paso anterior>
-Content-Type: <mismo contentType declarado en el presigned-upload>
-Content-Length: <exactamente fileSizeBytes>
-
-<body: bytes del archivo>
-```
-
-**Respuesta de R2 (200):**
-```
-ETag: "abc123def456..."
-```
-
-> Guardar el `ETag` de la respuesta es útil para validación de integridad, pero no es obligatorio para el flujo normal.
-
-**Qué puede salir mal:**
-
-| Error R2 | Causa |
-|----------|-------|
-| `403 SignatureDoesNotMatch` | El `Content-Length` no coincide con `fileSizeBytes` declarado. Medir el archivo antes de pedir la URL. |
-| `403 AccessDenied` | La URL expiró (> 15 min desde que se generó). Pedir una nueva URL. |
-| `400 EntityTooLarge` | El archivo real es mayor al declarado. |
-
----
-
-### EP-03 — POST /storage/confirm-upload
-
-Verifica que el archivo llegó a R2 (vía `HeadObject`) y cambia el estado del Asset de `PENDING` a `CONFIRMED`. Sin este paso, el asset existe en la DB pero no está activo.
-
-**Request:**
+**Body:**
 ```json
-POST /storage/confirm-upload
-Authorization: Bearer <token>
-Content-Type: application/json
-
 {
-  "key":       "organizations/cmq6dp2hz.../banners/main.png",
-  "assetType": "org-banner",
-
-  // Opcionales — si el cliente los conoce (mejoran la experiencia de búsqueda):
-  "durationSeconds": 0,
-  "width":           1200,
-  "height":          400,
-  "bitrate":         0,
-  "pageCount":       1
+  "key": "organizations/cmq.../repertoire/song-001/audio.mp3",
+  "assetType": "audio-track",
+  "durationSeconds": 213,
+  "bitrate": 320,
+  "width": null,
+  "height": null,
+  "pageCount": null
 }
 ```
 
-**Respuesta exitosa (200):**
+**Respuesta:** el objeto `Asset` completo con `status: "CONFIRMED"` y `confirmedAt` timestamp.
+
+> **Efecto secundario importante**: si `assetType` es `user-avatar` o `user-banner`, el backend actualiza automáticamente `user.avatarUrl` o `user.bannerUrl`. Después de confirmar, `GET /users/me` devuelve la URL actualizada.
+
+---
+
+### `GET /storage/assets/:id/download`
+
+Obtiene una URL de descarga firmada válida por **5 minutos**, usando solo el `assetId`. El frontend **nunca necesita conocer la key interna de R2**.
+
+**Respuesta:**
 ```json
 {
+  "success": true,
   "data": {
-    "id":          "cmq6e7abc000214m3xyz98abc",
-    "key":         "organizations/.../banners/main.png",
-    "status":      "CONFIRMED",
-    "assetType":   "ORG_BANNER",
-    "sizeBytes":   204800,
-    "contentType": "image/png",
-    "confirmedAt": "2026-06-09T15:30:00.000Z"
+    "downloadUrl": "https://regieart-media-production...?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=300&X-Amz-Signature=...",
+    "assetId": "cmqgqoa9u000egx5baa8dltrx",
+    "expiresIn": 300
   }
 }
 ```
 
-**Errores posibles:**
-
-| HTTP | Causa |
-|------|-------|
-| 404 | El archivo no existe en R2 (PUT nunca llegó o falló silenciosamente) |
-| 400 | `key` o `assetType` inválidos |
-| 403 | La key no pertenece al usuario autenticado |
+> Si el asset tiene `isPublic: true` y `STORAGE_CDN_URL` está configurado, devuelve directamente la URL del CDN (sin firma, sin expiración, cacheable).
 
 ---
 
-### EP-04 — GET /storage/presigned-download
+### `GET /storage/presigned-download?key=<r2-key>`
 
-Genera una URL firmada de descarga temporal (5 minutos). La URL se cachea en Redis 4 minutos para no re-firmar en cada petición. Incluye **verificación de ownership** antes de firmar.
-
-**Request:**
-```http
-GET /storage/presigned-download?key=organizations%2Fcmq6dp2hz...%2Fbanners%2Fmain.png
-Authorization: Bearer <token>
-```
-
-> La `key` debe estar URL-encoded. En JavaScript: `encodeURIComponent(key)`.
-
-**Respuesta exitosa (200):**
-```json
-{
-  "data": {
-    "downloadUrl": "https://r2.cloudflare.com/.../main.png?X-Amz-Expires=300&X-Amz-Signature=...",
-    "key":         "organizations/.../banners/main.png",
-    "expiresIn":   300
-  }
-}
-```
-
-**Reglas de ownership (verificadas en el backend, no configurables):**
-
-| Prefijo de la key | Quién puede descargar |
-|-------------------|-----------------------|
-| `profiles/{userId}/...` | Solo el usuario cuyo `userId` está en la ruta |
-| `organizations/{orgId}/...` | Solo miembros activos de esa organización |
-
-**Errores posibles:**
-
-| HTTP | Causa |
-|------|-------|
-| 401 | Falta el parámetro `key` en la query |
-| 403 | La key pertenece a otro usuario o a una org de la que no es miembro |
+Alternativa por `key` de R2. Usar principalmente en herramientas de administración. **Preferir `:id/download` en el frontend**.
 
 ---
 
-### EP-05 — GET /storage/assets/:id/download
+### `GET /storage/assets`
 
-Endpoint más seguro y recomendado para descarga. El cliente solo necesita el **ID del asset** (no la key interna de R2). El backend resuelve la key, verifica ownership y devuelve la URL firmada.
+Búsqueda de assets con filtros combinados (todos los filtros se combinan con AND).
 
-**Request:**
-```http
-GET /storage/assets/cmq6e7abc000214m3xyz98abc/download
-Authorization: Bearer <token>
+**Query params** (todos opcionales):
 ```
-
-**Respuesta exitosa (200):**
-```json
-{
-  "downloadUrl": "https://r2.cloudflare.com/.../main.png?X-Amz-Expires=300&...",
-  "assetId":     "cmq6e7abc000214m3xyz98abc",
-  "expiresIn":   300
-}
-```
-
-> Si el asset tiene `isPublic: true` y `STORAGE_CDN_URL` está configurado, la respuesta es instantánea: devuelve `https://cdn.regieart.com/{key}` sin firmar ni consultar Redis.
-
-**Errores posibles:**
-
-| HTTP | Causa |
-|------|-------|
-| 404 | Asset con ese ID no existe o fue eliminado |
-| 403 | El usuario no es dueño ni miembro de la org del asset |
-
----
-
-### EP-06 — GET /storage/objects
-
-Lista objetos directamente en Cloudflare R2 (sin pasar por la DB). Útil para depuración o para construir navegadores de archivos. Para búsqueda de producción, usar `GET /storage/assets`.
-
-**Request:**
-```http
-GET /storage/objects?prefix=organizations/cmq6dp2hz000114m3gfz16oqm/
-Authorization: Bearer <token>
+q=bandera roja          → texto libre en displayName, originalName, description
+assetType=audio-track   → puede repetirse: &assetType=music-score
+orgId=cmq...
+songId=song-001
+eventId=event-001
+tags=2026               → puede repetirse para filtrar por múltiples tags
+language=fr
+createdFrom=2026-01-01T00:00:00Z
+createdTo=2026-12-31T23:59:59Z
+page=1
+limit=20                → máximo 100
 ```
 
 **Respuesta:**
 ```json
 {
-  "data": [
-    {
-      "key":          "organizations/.../banners/main.png",
-      "size":         204800,
-      "lastModified": "2026-06-09T15:30:00.000Z"
-    }
-  ]
-}
-```
-
----
-
-### EP-07 — GET /storage/assets
-
-Búsqueda de assets con filtros combinados. Solo devuelve assets del usuario autenticado o de sus organizaciones (filtro de seguridad automático).
-
-**Parámetros de query (todos opcionales):**
-
-| Parámetro | Tipo | Descripción |
-|-----------|------|-------------|
-| `q` | string | Texto libre (busca en `displayName`, `originalName`, `description`) |
-| `assetType` | string[] | Filtrar por tipo. Repetir para varios: `?assetType=audio-track&assetType=music-score` |
-| `orgId` | string | Filtrar por organización |
-| `songId` | string | Filtrar por canción |
-| `eventId` | string | Filtrar por evento |
-| `tags` | string[] | Asset debe tener TODOS los tags indicados |
-| `language` | string | Código ISO 639-1 (`es`, `en`, `fr`) |
-| `createdFrom` | ISO 8601 | Fecha mínima de creación |
-| `createdTo` | ISO 8601 | Fecha máxima de creación |
-| `page` | number | Número de página (default: 1) |
-| `limit` | number | Assets por página, max 100 (default: 20) |
-| `orderBy` | string | `createdAt` \| `sizeBytes` \| `displayName` \| `confirmedAt` (default: `createdAt`) |
-| `order` | string | `asc` \| `desc` (default: `desc`) |
-
-**Ejemplos:**
-```
-# Todos los assets de una org
-GET /storage/assets?orgId=cmq6dp2hz000114m3gfz16oqm
-
-# Buscar texto
-GET /storage/assets?q=banner+temporada
-
-# Filtrar por tipo y ordenar por tamaño
-GET /storage/assets?assetType=audio-track&orderBy=sizeBytes&order=desc
-
-# Con paginación
-GET /storage/assets?page=2&limit=10
-```
-
-**Respuesta:**
-```json
-{
+  "success": true,
   "data": {
-    "items": [
-      {
-        "id":          "cmq6e7abc000214m3xyz98abc",
-        "key":         "organizations/.../banners/main.png",
-        "assetType":   "ORG_BANNER",
-        "contentType": "image/png",
-        "sizeBytes":   204800,
-        "status":      "CONFIRMED",
-        "displayName": "Banner temporada 2026",
-        "originalName":"banner-final-v2.png",
-        "description": "Banner principal para la temporada de verano",
-        "tags":        ["temporada-2026", "urgente"],
-        "language":    "es",
-        "isPublic":    false,
-        "width":       1200,
-        "height":      400,
-        "uploadedById":"cmq6c91oo00007kmimqbdjc6t",
-        "orgId":       "cmq6dp2hz000114m3gfz16oqm",
-        "createdAt":   "2026-06-09T15:30:00.000Z",
-        "confirmedAt": "2026-06-09T15:30:30.000Z"
-      }
-    ],
-    "total": 47,
-    "page":  1,
-    "pages": 5
+    "assets": [ /* array de Asset */ ],
+    "total": 42,
+    "page": 1,
+    "limit": 20,
+    "totalPages": 3
   }
 }
 ```
 
 ---
 
-### EP-08 — GET /storage/assets/:id
+### `GET /storage/assets/:id`
 
-Obtiene los metadatos completos de un asset por su ID. Verifica que el usuario tenga acceso (es el uploader o es miembro de la org).
-
-**Request:**
-```http
-GET /storage/assets/cmq6e7abc000214m3xyz98abc
-Authorization: Bearer <token>
-```
-
-**Respuesta:** mismo objeto `Asset` que aparece en la lista del EP-07.
+Metadatos completos de un asset por ID. Verifica acceso (propietario del archivo o miembro de la org).
 
 ---
 
-### EP-09 — PATCH /storage/assets/:id
+### `PATCH /storage/assets/:id`
 
-Actualiza los metadatos editables de un asset. Solo el usuario que subió el archivo puede editarlo.
+Actualiza metadatos. **No permite cambiar**: `key`, `assetType`, `sizeBytes`, `status`, `etag`.
 
-**Campos editables** (todos opcionales, PATCH parcial):
-
+**Body** (todos los campos opcionales):
 ```json
-PATCH /storage/assets/cmq6e7abc000214m3xyz98abc
-Authorization: Bearer <token>
-Content-Type: application/json
-
 {
-  "displayName": "Banner temporada 2026 — versión final",
-  "description": "Aprobado por dirección artística el 9 de junio",
-  "tags":        ["aprobado", "temporada-2026", "final"],
-  "language":    "es",
-  "isPublic":    true
+  "displayName": "Nombre actualizado",
+  "description": "Nueva descripción",
+  "tags": ["2026", "aprobado"],
+  "language": "es",
+  "isPublic": true
 }
 ```
 
-> Los `tags` **reemplazan** los existentes (no se acumulan). Para agregar un tag hay que enviar la lista completa.
+---
 
-**Campos que NO se pueden cambiar:** `key`, `assetType`, `contentType`, `sizeBytes`, `status`, `uploadedById`, `orgId`.
+### `DELETE /storage/assets/:id`
+
+Elimina el archivo. Hace **soft-delete** en DB (`status = DELETED`, `deletedAt = ahora`) + **hard-delete inmediato en R2**. La fila de DB se elimina en el siguiente ciclo del cron job (máx. 24h después).
 
 ---
 
-### EP-10 — DELETE /storage/assets/:id
+### `POST /storage/multipart/initiate`
 
-Soft-delete en la base de datos (marca el asset como `DELETED`) y elimina el objeto físico en R2 inmediatamente. La fila de la DB se limpia después por el cron job nocturno.
+Para archivos **> 50 MB**. Inicia el protocolo S3 Multipart Upload. Crea el asset en `PENDING` y devuelve URLs firmadas para cada parte.
 
-```http
-DELETE /storage/assets/cmq6e7abc000214m3xyz98abc
-Authorization: Bearer <token>
-```
+**Rate limit**: 5 solicitudes por minuto.
 
-**Respuesta (200):**
+**Body:**
 ```json
 {
-  "data": {
-    "id":        "cmq6e7abc000214m3xyz98abc",
-    "status":    "DELETED",
-    "deletedAt": "2026-06-09T16:00:00.000Z"
-  }
-}
-```
-
-> Una vez eliminado, el asset no aparece en búsquedas. La URL de descarga ya no funciona.
-
----
-
-### EP-11 — POST /storage/multipart/initiate
-
-Para archivos **mayores a 50 MB** (videos, audios largos). Devuelve las URLs pre-firmadas de cada parte para subirlas en paralelo.
-
-**Rate limit:** 5 peticiones por minuto.
-
-**Request:**
-```json
-POST /storage/multipart/initiate
-Authorization: Bearer <token>
-Content-Type: application/json
-
-{
-  "assetType":     "reference-video",
-  "contentType":   "video/mp4",
+  "assetType": "reference-video",
+  "contentType": "video/mp4",
   "fileSizeBytes": 270294474,
   "partSizeBytes": 10485760,
-  "orgId":         "cmq6dp2hz000114m3gfz16oqm",
-  "eventId":       "cuid-del-evento",
-  "displayName":   "Ensayo general — cámara fija",
-  "originalName":  "ensayo-general-2026-06-09.mp4"
+  "orgId": "cmq...",
+  "eventId": "event-ensayo-general-001",
+  "displayName": "Caí en la trampa — Ensayo general",
+  "originalName": "cai en la trampa.mp4"
 }
 ```
 
-> **`partSizeBytes`**: tamaño de cada parte en bytes. **Mínimo 5 MB (5,242,880 bytes)**. Recomendado: 10 MB para archivos hasta 1 GB, 50 MB para archivos más grandes. El backend ajusta si se envía un valor menor al mínimo.
-
-**Respuesta (200):**
+**Respuesta:**
 ```json
 {
+  "success": true,
   "data": {
-    "uploadId": "abc123multipartid",
-    "key":      "organizations/.../events/cuid-del-evento/videos/uuid-generado.mp4",
+    "uploadId": "ABUUxwF7JnVGzCTcXg4U...",
+    "key": "organizations/cmq.../events/event-001/videos/fbbe76a9-2417-49c1-bd10-54005e852907.mp4",
+    "assetId": "cmqgr7ggm000tgx5b76clw083",
     "parts": [
-      { "partNumber": 1, "uploadUrl": "https://r2.cloudflare.com/...?partNumber=1&uploadId=abc123..." },
-      { "partNumber": 2, "uploadUrl": "https://r2.cloudflare.com/...?partNumber=2&uploadId=abc123..." },
-      { "partNumber": 28, "uploadUrl": "https://r2.cloudflare.com/...?partNumber=28&uploadId=abc123..." }
+      { "partNumber": 1, "uploadUrl": "https://...?partNumber=1&uploadId=ABUUx...&X-Amz-Signature=..." },
+      { "partNumber": 2, "uploadUrl": "https://..." },
+      { "partNumber": 26, "uploadUrl": "https://..." }
     ]
   }
 }
 ```
 
+> `partSizeBytes` mínimo: 5 MB (límite del protocolo S3/R2). Por defecto: 10 MB. Se recomienda subir las partes **en paralelo** (máx. 5 simultáneas) para maximizar la velocidad.
+
 ---
 
-### EP-12 — POST /storage/multipart/complete
+### `POST /storage/multipart/complete`
 
-Ensambla todas las partes subidas en R2 en un único objeto. **Se debe llamar solo después de que TODAS las partes se hayan subido exitosamente.**
+Envía los ETags de todas las partes completadas. R2 las ensambla en un único archivo y actualiza el asset a `CONFIRMED`.
 
-**Request:**
+**Body:**
 ```json
-POST /storage/multipart/complete
-Authorization: Bearer <token>
-Content-Type: application/json
-
 {
-  "key":      "organizations/.../videos/uuid-generado.mp4",
-  "uploadId": "abc123multipartid",
+  "key": "organizations/cmq.../events/event-001/videos/fbbe76a9-....mp4",
+  "uploadId": "ABUUxwF7...",
   "parts": [
-    { "partNumber": 1,  "etag": "\"d8e8fca2dc0f896fd7cb4cb0031ba249\"" },
-    { "partNumber": 2,  "etag": "\"3b4c25e1b8b3b19d5f70a2b1d8a3e9c5\"" },
-    { "partNumber": 28, "etag": "\"1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d\"" }
+    { "partNumber": 1, "etag": "\"9f454edfe4bbb11fdfde7543a6dcf1a1\"" },
+    { "partNumber": 2, "etag": "\"4be3194df30526da194061166d139492\"" },
+    { "partNumber": 26, "etag": "\"f306f4f7c536c17830889a112d80dd97\"" }
   ]
 }
 ```
 
-> El `etag` de cada parte es el `ETag` que devuelve R2 en el header de respuesta al hacer PUT de esa parte. Hay que guardarlos durante la subida.
+---
 
-**Respuesta (200):**
+### `DELETE /storage/multipart/abort`
+
+Cancela el upload en curso y libera el almacenamiento de las partes ya subidas en R2.
+
+**Body:**
 ```json
 {
+  "key": "organizations/cmq.../videos/fbbe76a9-....mp4",
+  "uploadId": "ABUUxwF7..."
+}
+```
+
+---
+
+### `GET /users/me/profile-urls`
+
+Devuelve avatar y banner del usuario autenticado en una sola llamada. Diseñado para poblar el header de perfil sin cargar todos los datos de membresías.
+
+**Respuesta:**
+```json
+{
+  "success": true,
   "data": {
-    "key":   "organizations/.../videos/uuid-generado.mp4",
-    "etag":  "\"finaletag-of-assembled-object\"",
-    "status": "CONFIRMED"
+    "userId": "cmqgqnin60000gx5b5mxsjfow",
+    "displayName": "Test User",
+    "avatarUrl": "https://cdn.regieart.com/profiles/cmq.../avatar.jpg",
+    "bannerUrl": null
   }
 }
 ```
 
 ---
 
-### EP-13 — DELETE /storage/multipart/abort
+### `GET /users/:id/profile-urls`
 
-Cancela una subida multipart en curso. Libera las partes ya subidas en R2 y elimina el registro `PENDING` de la base de datos inmediatamente.
+Mismo formato, para ver el perfil de otro usuario (útil en listas de miembros de una organización).
+
+---
+
+### `GET /health`  /  `GET /health/detailed`
+
+Health check sin autenticación. `/health/detailed` devuelve estado de DB y Redis.
 
 ```json
-DELETE /storage/multipart/abort
-Authorization: Bearer <token>
-Content-Type: application/json
-
 {
-  "key":      "organizations/.../videos/uuid-generado.mp4",
-  "uploadId": "abc123multipartid"
-}
-```
-
-**Respuesta (200):**
-```json
-{ "data": { "aborted": true } }
-```
-
-> Llamar siempre a este endpoint si el usuario cancela la subida o si ocurre un error irrecuperable. Si no se llama, R2 acumula partes huérfanas que ocupan espacio (aunque el cron job las limpia en 24 h).
-
----
-
-## 6. Lo que se probó en real y los resultados
-
-Todas las pruebas se ejecutaron con el script `test-storage-endpoints.mjs` contra el servidor local (`localhost:3005`) con Keycloak, PostgreSQL y Redis corriendo en Docker.
-
-**Usuario de prueba:** `teststorage@gmail.com` / `teststorage@gmail.com`  
-**Keycloak client:** `regieart-mobile`  
-**userId:** `cmq6c91oo00007kmimqbdjc6t`  
-**orgId:** `cmq6dp2hz000114m3gfz16oqm`
-
-| Endpoint | Probado en real | Resultado | Observaciones |
-|----------|----------------|-----------|---------------|
-| POST /presigned-upload (org-banner) | ✅ Sí | HTTP 200 | SVG de 204 bytes como `image/png` |
-| PUT directo a R2 | ✅ Sí | HTTP 200 | Archivo subido, ETag devuelto |
-| POST /confirm-upload | ✅ Sí | HTTP 200 | Asset pasó de PENDING → CONFIRMED |
-| GET /presigned-download | ✅ Sí | HTTP 200 | URL firmada generada, URL válida en browser |
-| GET /objects | ✅ Sí | HTTP 200 | Lista objetos de la org en R2 |
-| GET /assets (sin filtros) | ✅ Sí | HTTP 200 | Devuelve todos los assets del usuario |
-| GET /assets (?assetType[]=music-score) | ✅ Sí | HTTP 200 | Filtrado correcto |
-| GET /assets (?q=partitura) | ✅ Sí | HTTP 200 | Búsqueda de texto |
-| GET /assets (?page=1&limit=5) | ✅ Sí | HTTP 200 | Paginación correcta |
-| GET /assets/:id | ✅ Sí | HTTP 200 | Metadatos completos devueltos |
-| PATCH /assets/:id | ✅ Sí | HTTP 200 | displayName, tags, isPublic actualizados |
-| DELETE /assets/:id | ✅ Sí | HTTP 200 | Soft-delete, objeto borrado de R2 |
-| POST /multipart/initiate | ✅ Sí | HTTP 200 | 28 URLs generadas para archivo de 257 MB |
-| DELETE /multipart/abort | ✅ Sí | HTTP 200 | Abort en R2 + limpieza PENDING en DB |
-| POST /multipart/complete | ⚠️ No en real | — | Solo se documentó la estructura. Requeriría subir 28 partes reales de 10 MB cada una. |
-
-**Prueba adicional del endpoint nuevo GET /assets/:id/download:**  
-Se probó con un archivo de audio MP3 (`org-banner` de audio) y con el SVG de banner. Ambos devolvieron URL firmada correctamente.
-
----
-
-## 7. Bugs encontrados y cómo se corrigieron
-
-### Bug 1: `403 SignatureDoesNotMatch` al subir a R2
-**Causa:** En la prueba se declaró `fileSizeBytes: 204800` (200 KB) pero el archivo SVG real tenía 204 bytes.  
-**Síntoma:** R2 devuelve `<Code>SignatureDoesNotMatch</Code>`.  
-**Solución:** Medir el archivo antes de pedir la URL:
-```javascript
-const content = '<svg>...</svg>';
-const fileSizeBytes = Buffer.byteLength(content, 'utf8'); // 204 bytes exactos
-```
-
-### Bug 2: Error 400 con `assetType: "ORG_BANNER"`
-**Causa:** Los valores del enum `AssetType` son kebab-case (`org-banner`), no screaming-snake (`ORG_BANNER`).  
-**Síntoma:** `assetType debe ser uno de: user-avatar, org-banner, ...`  
-**Solución:** Siempre usar los valores en kebab-case.
-
-### Bug 3: Error 400 con `partSizeMb: 10`
-**Causa:** El campo correcto es `partSizeBytes` (bytes), no `partSizeMb`.  
-**Síntoma:** `property partSizeMb should not exist` (ValidationPipe tiene `forbidNonWhitelisted: true`).  
-**Solución:** Usar `partSizeBytes: 10485760` (10 MB en bytes).
-
-### Bug 4: `UniqueConstraintError` al subir el mismo avatar dos veces
-**Causa:** `createPending` usaba `prisma.asset.create()` y la key es un campo `@unique`. Si el usuario sube el avatar por segunda vez, la key es idéntica.  
-**Solución:** Cambiado a `prisma.asset.upsert()` — si ya existe un asset con esa key, lo actualiza en lugar de fallar.
-
-### Bug 5: La búsqueda de texto rompía el filtro de seguridad
-**Causa:** Al buscar con `?q=texto`, el código sobreescribía `where.OR` (que contenía el filtro usuario/org). Esto potencialmente devolvía assets de otros usuarios.  
-**Solución:** El filtro de texto se pone en `where.AND`, preservando el `where.OR` de seguridad.
-
----
-
-## 8. Mejoras implementadas (TDD)
-
-Todas las mejoras se implementaron siguiendo el ciclo **RED → GREEN → REFACTOR**. Primero el test que falla, luego el código que lo hace pasar.
-
-### Mejora 1 — Ownership check en descarga
-Antes: cualquier usuario con token podía descargar cualquier archivo si conocía la key.  
-Después: el backend verifica la propiedad antes de firmar. Tests: 9 ✅
-
-### Mejora 2 — Abort multipart limpia la DB
-Antes: abortar un multipart dejaba el asset en `PENDING` para siempre (solo el cron de 24 h lo limpiaba).  
-Después: abort hace `hardDelete` inmediato. Tests: 6 ✅
-
-### Mejora 3 — GET /assets/:id/download
-Nuevo endpoint para descargar por ID sin exponer la key interna de R2. Tests: 8 ✅
-
-### Mejora 4 — Distributed lock en cron jobs
-Antes: en un despliegue con múltiples instancias, ambos cron jobs correrían en paralelo borrando los mismos assets.  
-Después: Redis `SET NX` garantiza que solo una instancia ejecuta cada job. Tests: 7 ✅
-
-### Mejora 5 — Índice GIN en PostgreSQL
-La búsqueda de texto ahora usa el índice GIN para full-text search:
-```sql
-CREATE INDEX "assets_fts_idx" ON "assets" USING GIN (
-  to_tsvector('simple',
-    coalesce("displayName",'') || ' ' ||
-    coalesce("originalName",'') || ' ' ||
-    coalesce("description",''))
-);
-```
-Migración: `20260609133027_add_asset_search_indexes` ✅
-
-### Mejora 6 — CDN fast path para assets públicos
-Si `asset.isPublic === true` y `STORAGE_CDN_URL` está configurado, devuelve la URL de CDN directamente sin firmar. Cero latencia de Redis/R2. Tests: incluidos en mejora 1 ✅
-
----
-
-## 9. Base de datos — estructura del Asset
-
-```sql
--- Tabla: assets
-id            TEXT  PRIMARY KEY (cuid)
-key           TEXT  UNIQUE          -- Ruta en R2 (determinista)
-assetType     ENUM                  -- USER_AVATAR | ORG_BANNER | AUDIO_TRACK | ...
-contentType   TEXT                  -- MIME type
-sizeBytes     BIGINT                -- Peso real en bytes
-status        ENUM  DEFAULT PENDING -- PENDING | CONFIRMED | DELETED
-etag          TEXT  NULLABLE        -- Checksum de R2
-
--- Metadatos de visualización
-displayName   TEXT  NULLABLE
-originalName  TEXT  NULLABLE
-description   TEXT  NULLABLE
-tags          TEXT[]
-language      TEXT  NULLABLE
-
--- Metadatos técnicos (opcionales)
-durationSeconds FLOAT NULLABLE
-width           INT   NULLABLE
-height          INT   NULLABLE
-pageCount       INT   NULLABLE
-bitrate         INT   NULLABLE
-
--- Multipart
-isMultipart   BOOL  DEFAULT false
-uploadId      TEXT  NULLABLE
-partCount     INT   NULLABLE
-
--- Relaciones
-uploadedById  TEXT  -- userId (siempre presente)
-orgId         TEXT  NULLABLE
-songId        TEXT  NULLABLE
-eventId       TEXT  NULLABLE
-memberId      TEXT  NULLABLE
-
--- Versionado
-version       INT   DEFAULT 1
-replacesId    TEXT  NULLABLE
-
--- Control de acceso
-isPublic      BOOL  DEFAULT false
-expiresAt     TIMESTAMP NULLABLE
-
--- Auditoría
-createdAt     TIMESTAMP DEFAULT now()
-confirmedAt   TIMESTAMP NULLABLE
-deletedAt     TIMESTAMP NULLABLE
-updatedAt     TIMESTAMP
-```
-
-**Índices disponibles:**
-- `assets_pkey` — B-tree en `id` (PK)
-- `assets_key_key` — B-tree único en `key`
-- `assets_uploadedById_idx` — B-tree en `uploadedById`
-- `assets_orgId_idx` — B-tree en `orgId`
-- `assets_assetType_idx` — B-tree en `assetType`
-- `assets_status_idx` — B-tree en `status`
-- `assets_songId_idx` — B-tree en `songId`
-- `assets_fts_idx` — **GIN** en `to_tsvector(displayName || originalName || description)`
-
----
-
-## 10. Cron jobs automáticos
-
-Dos jobs se ejecutan automáticamente en segundo plano con distributed lock en Redis para evitar ejecuciones duplicadas en múltiples instancias:
-
-### Job 1: Limpiar assets PENDING expirados
-- **Frecuencia:** cada hora
-- **Qué hace:** busca assets en estado `PENDING` con más de 24 horas de antigüedad y los elimina de la DB. Estos son archivos donde el usuario pidió una URL pero nunca subió nada.
-- **Lock Redis:** `storage:lock:cleanup-pending` con TTL de 120 segundos
-
-### Job 2: Purgar assets DELETED de R2
-- **Frecuencia:** cada noche a las 03:00
-- **Qué hace:** busca assets en estado `DELETED`, borra el objeto físico de R2, y finalmente borra la fila de la DB. Procesa máximo 100 assets por ciclo para evitar timeouts.
-- **Lock Redis:** `storage:lock:purge-deleted` con TTL de 600 segundos
-
----
-
-## 11. Lo que NO se probó / limitaciones conocidas
-
-| Funcionalidad | Estado | Motivo |
-|---------------|--------|--------|
-| **Completar multipart con partes reales** | ⚠️ No probado en real | Requeriría subir 28+ partes de 10 MB cada una en la prueba. La estructura está documentada y el código existe. |
-| **URL de CDN fast path** | ⚠️ No probado en real | Requiere configurar `STORAGE_CDN_URL` en `.env`. En entorno de desarrollo no hay CDN configurado. |
-| **Renovación automática de token** | ⚠️ No implementado en el test | El token Keycloak expira en 5 min. En producción el frontend debe implementar `refresh_token`. |
-| **Subida de archivos > 300 MB** | ⚠️ No hay límite en el backend para multipart | El límite está en la política por `assetType`. `reference-video` acepta hasta 300 MB. Videos más grandes requieren ajustar la política. |
-| **Verificación de MIME real** | ⚠️ Solo valida el MIME declarado | El backend confía en el `contentType` que envía el cliente. No lee los magic bytes del archivo. |
-| **Tests E2E** | ⚠️ No existen | Solo hay tests unitarios (mocks). Los tests de integración del script `.mjs` son manuales. |
-| **Rollback si confirm falla** | ⚠️ No implementado | Si el archivo llega a R2 pero el `confirm-upload` falla por error de DB, el asset queda en `PENDING` hasta el cron de 24 h. |
-
----
-
-## 12. Guía de consumo para el frontend — buenas prácticas
-
-### El flujo de subida correcto en código
-
-```typescript
-// 1. Medir el archivo ANTES de pedir la URL (crítico)
-const file = await pickFile(); // Expo ImagePicker o Document Picker
-const fileBytes = await FileSystem.readAsStringAsync(file.uri, { encoding: 'base64' });
-const fileSizeBytes = Math.floor(fileBytes.length * 0.75); // base64 → bytes aprox.
-// Mejor: usar file.size si el picker lo expone
-
-// 2. Pedir la URL pre-firmada
-const { data } = await api.post('/storage/presigned-upload', {
-  assetType:    'org-banner',
-  contentType:  file.mimeType,
-  fileSizeBytes: file.size, // <- usar el tamaño real del file object
-  orgId,
-  displayName:  file.name,
-  originalName: file.name,
-});
-const { uploadUrl, key, assetId } = data;
-
-// 3. Subir directamente a R2 (sin el token de Keycloak)
-const uploadResult = await fetch(uploadUrl, {
-  method: 'PUT',
-  headers: {
-    'Content-Type': file.mimeType,
-    // NO incluir Authorization aquí — la URL ya está firmada
-  },
-  body: fileBlob, // o FileSystem.readAsStringAsync con encoding 'base64'
-});
-if (!uploadResult.ok) throw new Error('Falló la subida a R2');
-
-// 4. Confirmar al backend
-await api.post('/storage/confirm-upload', {
-  key,
-  assetType: 'org-banner',
-  width:     file.width,   // si el picker los expone
-  height:    file.height,
-});
-// Ahora el asset está CONFIRMED y aparece en búsquedas
-```
-
-### Comunicarle bien los errores al usuario
-
-| Situación | Mensaje sugerido para el usuario |
-|-----------|----------------------------------|
-| Archivo demasiado grande | "El archivo supera el límite de X MB para este tipo. Comprime el archivo o elige uno más pequeño." |
-| Formato no permitido | "Este tipo de archivo no está permitido aquí. Los formatos aceptados son: JPG, PNG." |
-| Subida a R2 falló (403) | "La subida falló. Inténtalo de nuevo." (pedir una nueva URL antes de reintentar) |
-| Token expirado (401) | Silenciosamente renovar el token con `refresh_token` y reintentar |
-| Sin conexión durante la subida | "La subida se interrumpió. ¿Quieres reintentar?" (para multipart: puedes reanudar desde la última parte completada) |
-| Archivo eliminado (404 en descarga) | "Este archivo ya no está disponible." |
-| Sin permiso (403 en descarga) | "No tienes acceso a este archivo." |
-
-### Opciones para recuperarse de errores
-
-```
-El usuario quiere subir un avatar pero el archivo es demasiado grande (> 2 MB)
-├── Opción A: "Comprimir imagen automáticamente" → reducir calidad/resolución en el cliente
-├── Opción B: "Elegir otra imagen" → volver al selector
-└── Opción C: Explica el límite y enlaza a una herramienta de compresión
-
-El usuario está subiendo un video largo y la conexión se corta
-├── Opción A: Multipart — reanudar desde la última parte con etag guardado
-├── Opción B: Multipart — abortar y reiniciar (DELETE /multipart/abort primero)
-└── Opción C: Reducir tamaño del video antes de subir
-```
-
-### Multipart — cómo manejar la progresión
-
-```typescript
-// Barra de progreso con multipart
-const total = parts.length;
-let completed = 0;
-
-const etags: { partNumber: number; etag: string }[] = [];
-
-// Subir en paralelo (máximo 3 a la vez para no saturar la red)
-const chunks = chunkArray(parts, 3);
-for (const chunk of chunks) {
-  await Promise.all(chunk.map(async (part) => {
-    const res = await fetch(part.uploadUrl, {
-      method: 'PUT',
-      body: fileSlice(file, part.start, part.end),
-    });
-    const etag = res.headers.get('etag');
-    etags.push({ partNumber: part.partNumber, etag });
-    completed++;
-    onProgress(completed / total); // actualizar barra
-  }));
-}
-
-// Una vez todas las partes subidas, completar
-await api.post('/storage/multipart/complete', { key, uploadId, parts: etags });
-```
-
-### Caché de URLs de descarga en el cliente
-
-Las URLs firmadas tienen 5 minutos de validez. El backend las cachea en Redis 4 minutos para no refirmar en cada petición. El frontend también debería cachearlas:
-
-```typescript
-const downloadUrlCache = new Map<string, { url: string; expiresAt: number }>();
-
-async function getDownloadUrl(assetId: string): Promise<string> {
-  const cached = downloadUrlCache.get(assetId);
-  if (cached && cached.expiresAt > Date.now() + 30_000) { // 30 s de margen
-    return cached.url;
+  "success": true,
+  "data": {
+    "status": "degraded",
+    "services": {
+      "database": { "status": "up", "latency": "12ms" },
+      "redis":    { "status": "down", "error": "Connection failed" }
+    }
   }
-  const { downloadUrl, expiresIn } = await api.get(`/storage/assets/${assetId}/download`);
-  downloadUrlCache.set(assetId, {
-    url:       downloadUrl,
-    expiresAt: Date.now() + expiresIn * 1000,
-  });
-  return downloadUrl;
 }
 ```
 
-### Prefer el endpoint por ID, no por key
+---
 
-```typescript
-// ❌ Evitar — expone la ruta interna de R2
-const url = await api.get(`/storage/presigned-download?key=${encodeURIComponent(asset.key)}`);
+## 7. Flujo Completo — Archivo Pequeño (≤ 50 MB)
 
-// ✅ Preferir — más seguro, más semántico, compatible con CDN fast path
-const url = await api.get(`/storage/assets/${asset.id}/download`);
+```
+App Mobile                    Backend API                  Cloudflare R2
+    │                              │                              │
+    │  1. POST /presigned-upload   │                              │
+    │  { assetType, contentType,   │                              │
+    │    fileSizeBytes, orgId,     │                              │
+    │    songId, displayName... }  │                              │
+    │ ─────────────────────────→  │                              │
+    │                              │  Validar JWT                │
+    │                              │  Validar DTO (whitelist)    │
+    │                              │  Verificar membresía org    │
+    │                              │  (Redis caché → DB)         │
+    │                              │  Crear Asset PENDING en DB  │
+    │                              │  Firmar URL PUT (15 min)    │
+    │ ←─────────────────────────  │                              │
+    │  { uploadUrl, key, assetId } │                              │
+    │                              │                              │
+    │  2. PUT uploadUrl            │                              │
+    │  Headers:                    │                              │
+    │    Content-Type: audio/mpeg  │                              │
+    │  Body: binario del archivo  ──────────────────────────────→│
+    │                              │                         Almacenar
+    │ ←──────────────────────────────────────────────────────────│
+    │  HTTP 200 + ETag             │                              │
+    │                              │                              │
+    │  3. POST /confirm-upload     │                              │
+    │  { key, assetType,           │                              │
+    │    durationSeconds: 213 }    │                              │
+    │ ─────────────────────────→  │                              │
+    │                              │  HeadObject(key) ──────────→│
+    │                              │ ←──── { ETag, size }        │
+    │                              │  Verificar integridad       │
+    │                              │  Asset PENDING → CONFIRMED  │
+    │                              │  (si avatar: user.avatarUrl)│
+    │ ←─────────────────────────  │                              │
+    │  Asset { status: CONFIRMED } │                              │
+    │                              │                              │
+    │  4. GET /assets/:id/download │                              │
+    │ ─────────────────────────→  │                              │
+    │                              │  Verificar acceso           │
+    │                              │  Comprobar Redis caché      │
+    │                              │  Firmar URL GET (5 min) ───→│
+    │                              │ ←──── URL firmada           │
+    │ ←─────────────────────────  │                              │
+    │  { downloadUrl }             │                              │
+    │                              │                              │
+    │  5. GET downloadUrl          │                              │
+    │     (directo a R2)          ──────────────────────────────→│
+    │ ←──────────────────────────────────────────────────────────│
+    │  Binario del archivo         │                              │
 ```
 
-### Checklist de buenas prácticas
+---
 
-- [ ] Medir el archivo con `file.size` antes de pedir la URL pre-firmada
-- [ ] Usar `encodeURIComponent()` si pasas la `key` como query param
-- [ ] Siempre llamar a `/confirm-upload` después de un PUT exitoso
-- [ ] Siempre llamar a `/multipart/abort` si el usuario cancela o hay error irrecuperable
-- [ ] Cachear las URLs de descarga en el cliente (evitar re-request innecesarios)
-- [ ] Mostrar progreso real al usuario durante la subida a R2
-- [ ] Usar el endpoint `GET /assets/:id/download` en lugar de `presigned-download?key=`
-- [ ] No guardar las `uploadUrl` (pre-firmadas) más de 15 minutos
-- [ ] Implementar `refresh_token` antes de que el token JWT expire
-- [ ] En listas de assets, cargar las URLs de descarga lazy (solo cuando el usuario las necesita)
+## 8. Flujo Completo — Archivo Grande (> 50 MB — Multipart)
+
+```
+App Mobile                    Backend API                  Cloudflare R2
+    │                              │                              │
+    │  1. POST /multipart/initiate │                              │
+    │  { assetType, fileSizeBytes, │                              │
+    │    partSizeBytes: 10MB,      │                              │
+    │    eventId, orgId... }       │                              │
+    │ ─────────────────────────→  │                              │
+    │                              │  Calcular N partes           │
+    │                              │  257 MB / 10 MB = 26 partes  │
+    │                              │  CreateMultipartUpload ────→│
+    │                              │ ←──── uploadId              │
+    │                              │  Firmar 26 URLs PUT         │
+    │ ←─────────────────────────  │                              │
+    │  { uploadId, key, assetId,   │                              │
+    │    parts: [{partNumber,      │                              │
+    │    uploadUrl}] x26 }         │                              │
+    │                              │                              │
+    │  2. PUT cada parte (paralelo)│                              │
+    │  parts[0..4] simultáneos    ─────────────────────────────→│
+    │  ←─ ETag[1..5]              │                              │
+    │  parts[5..9] simultáneos    ─────────────────────────────→│
+    │  ←─ ETag[6..10]             │                              │
+    │  ... (hasta parte 26)        │                              │
+    │  ←─ ETag[26]                │                              │
+    │                              │                              │
+    │  3. POST /multipart/complete │                              │
+    │  { key, uploadId,            │                              │
+    │    parts: [{partNumber,      │                              │
+    │    etag}] x26 }              │                              │
+    │ ─────────────────────────→  │                              │
+    │                              │  CompleteMultipartUpload ──→│
+    │                              │ ←────── Archivo ensamblado  │
+    │                              │  Asset → CONFIRMED          │
+    │ ←─────────────────────────  │                              │
+    │  Asset { status: CONFIRMED } │                              │
+    │                              │                              │
+    │  (Si falla en cualquier paso:│                              │
+    │  DELETE /multipart/abort    │                              │
+    │  { key, uploadId })          │                              │
+```
+
+---
+
+## 9. Flujo de Descarga
+
+### Método recomendado para el frontend
+
+```
+1. GET /api/v1/storage/assets/:assetId/download
+   → { downloadUrl: "https://...?X-Amz-Expires=300&X-Amz-Signature=..." }
+
+2. Usar downloadUrl directamente:
+   - Audio:  new Audio(downloadUrl).play()   /   expo-av
+   - Video:  <Video source={{ uri: downloadUrl }} />
+   - PDF:    WebView o expo-print
+   - Imagen: <Image source={{ uri: downloadUrl }} />
+
+3. La URL expira en 5 minutos.
+   Si el usuario vuelve más tarde → repetir paso 1.
+```
+
+### Estrategia de caché local en la app (recomendada)
+
+```typescript
+// React Native con expo-file-system
+import * as FileSystem from 'expo-file-system';
+
+async function getAudioUri(assetId: string): Promise<string> {
+  const localPath = `${FileSystem.cacheDirectory}audio_${assetId}.mp3`;
+  
+  // 1. ¿Está en caché local del dispositivo?
+  const info = await FileSystem.getInfoAsync(localPath);
+  if (info.exists) {
+    return localPath;  // Reproducir offline sin internet
+  }
+  
+  // 2. Obtener URL firmada del backend
+  const { data } = await apiClient.get(`/storage/assets/${assetId}/download`);
+  
+  // 3. Descargar y guardar en disco del dispositivo
+  await FileSystem.downloadAsync(data.downloadUrl, localPath);
+  return localPath;  // A partir de ahora funciona sin internet
+}
+```
+
+> **La URL firmada solo se necesita para la descarga inicial.** Una vez el archivo está en caché local, la app lo reproduce sin conexión a internet ni nuevas peticiones al backend.
+
+---
+
+## 10. Seguridad en Capas
+
+```
+Capa 1 — JwtAuthGuard (clase-nivel en StorageController)
+  ├── Valida firma RS256 del JWT usando las claves públicas de Keycloak (JWKS)
+  ├── Si el token expiró o es inválido → 401 Unauthorized
+  └── El userId se extrae del JWT, NUNCA del body (imposible de falsificar)
+
+Capa 2 — ValidationPipe global (configurado en main.ts)
+  ├── whitelist: true          → elimina campos no declarados en el DTO silenciosamente
+  ├── forbidNonWhitelisted: true → error 400 si llegan campos extra inesperados
+  └── transform: true          → convierte strings a numbers/booleans automáticamente
+
+Capa 3 — Política de MIME y tamaño (upload-policies.ts)
+  ├── Valida contentType contra allowedMimeTypes del AssetType
+  ├── Valida fileSizeBytes contra maxSizeBytes del AssetType
+  └── Error 400 con mensaje descriptivo si no cumple
+
+Capa 4 — Verificación de membresía (StorageMembershipService)
+  ├── Para activos org-scoped: busca en organizationMember de PostgreSQL
+  ├── Resultado cacheado en Redis (TTL 5 min) para no consultar DB en cada request
+  └── Si Redis falla → fall-through directo a DB (no bloquea la operación)
+
+Capa 5 — Ownership check en confirmación (StorageObjectService)
+  ├── Rutas profiles/: verifica key.startsWith(`profiles/${userId}/`)
+  └── Rutas organizations/: verifica membresía
+
+Capa 6 — HeadObject en confirmación
+  ├── Verifica que el archivo realmente existe en R2 (no confía en el cliente)
+  └── Si no existe → 400 BadRequest
+
+Capa 7 — Cloudflare R2
+  ├── La URL firmada incluye el key exacto, Content-Type y Content-Length
+  └── R2 rechaza el PUT si alguno no coincide
+```
+
+---
+
+## 11. Caché con Redis
+
+| Qué se cachea | Key Redis | TTL |
+|---|---|---|
+| Verificación de membresía | `storage:membership:{userId}:{orgId}` | 5 min |
+| URL de descarga firmada | `storage:download-url:{r2-key}` | 4 min (expira antes que la URL de 5 min) |
+| Lock de cron PENDING cleanup | `storage:lock:cleanup-pending` | 2 min |
+| Lock de cron PURGE cleanup | `storage:lock:cleanup-purge` | 10 min |
+
+**Redis es opcional**: si no está disponible, el sistema funciona correctamente (va directo a DB y R2). Los locks usan `SET NX` (atómico) para garantizar que solo una instancia del backend corra cada cron en entornos con escalado horizontal.
+
+---
+
+## 12. Jobs de Limpieza Automática
+
+| Job | Frecuencia | Acción |
+|---|---|---|
+| `cleanupPendingAssets` | Cada hora | Elimina assets en `PENDING` con más de 2 horas de antigüedad (subidas abandonadas o fallidas) |
+| `purgeDeletedAssets` | Cada día a las 3:00 AM | Elimina físicamente de la DB los assets en `DELETED` con más de 24h (los objetos R2 ya fueron eliminados al hacer el DELETE) |
+
+---
+
+## 13. Formato de Respuestas
+
+### Éxito
+```json
+{
+  "success": true,
+  "data": { ... }
+}
+```
+
+### Error de validación (400)
+```json
+{
+  "success": false,
+  "error": {
+    "code": "400",
+    "message": "Validation failed",
+    "details": [
+      "eventId should not be empty",
+      "assetType must be one of: user-avatar, audio-track, ..."
+    ]
+  }
+}
+```
+
+### Error de negocio (403, 404, 500)
+```json
+{
+  "success": false,
+  "error": {
+    "code": "403",
+    "message": "No tienes acceso a los recursos de esta organización."
+  }
+}
+```
+
+---
+
+## 14. Códigos de Error
+
+| HTTP | Cuándo ocurre |
+|---|---|
+| `400` | Body inválido, MIME no permitido, tamaño excedido, archivo no encontrado en R2 al confirmar, parámetros requeridos faltantes |
+| `401` | Token ausente, expirado o con firma inválida |
+| `403` | Usuario no es miembro de la organización, intento de acceder a archivo de otro usuario |
+| `404` | Asset ID no existe en la DB |
+| `429` | Rate limit superado (10 req/min para presigned-upload, 5 para multipart/initiate) |
+| `500` | Error interno (fallo de R2, Prisma, etc.) — capturado por Sentry automáticamente |
+
+---
+
+## 15. Guía de Implementación Frontend
+
+### Paso 0 — Autenticación con Keycloak
+
+```typescript
+// Obtener token JWT
+const response = await fetch(
+  'https://keycloak-production-b2ce.up.railway.app/realms/regieart/protocol/openid-connect/token',
+  {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'password',
+      client_id: 'regieart-mobile',
+      username: 'usuario@email.com',
+      password: 'contraseña',
+    }),
+  }
+);
+const { access_token, expires_in } = await response.json();
+
+// Header para todas las llamadas al backend
+const authHeaders = { Authorization: `Bearer ${access_token}` };
+```
+
+---
+
+### Subir un audio del repertorio
+
+```typescript
+async function uploadAudio(
+  file: File,
+  orgId: string,
+  songId: string,
+  metadata: { displayName: string; durationSeconds?: number }
+): Promise<string> {
+  // 1. Solicitar URL firmada
+  const step1 = await fetch('/api/v1/storage/presigned-upload', {
+    method: 'POST',
+    headers: { ...authHeaders, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      assetType: 'audio-track',
+      contentType: 'audio/mpeg',
+      fileSizeBytes: file.size,
+      orgId,
+      songId,
+      displayName: metadata.displayName,
+      originalName: file.name,
+    }),
+  }).then(r => r.json());
+
+  const { uploadUrl, key, assetId } = step1.data;
+
+  // 2. PUT directo a R2 (el archivo NO pasa por el backend)
+  await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'audio/mpeg' },
+    body: file,
+  });
+
+  // 3. Confirmar al backend
+  await fetch('/api/v1/storage/confirm-upload', {
+    method: 'POST',
+    headers: { ...authHeaders, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      key,
+      assetType: 'audio-track',
+      durationSeconds: metadata.durationSeconds,
+    }),
+  });
+
+  return assetId;  // Guardar en el estado de la app para descargas futuras
+}
+```
+
+---
+
+### Subir foto de perfil (avatar o banner)
+
+```typescript
+async function uploadProfileImage(
+  imageFile: File,
+  type: 'user-avatar' | 'user-banner'
+): Promise<void> {
+  // 1. Presigned URL
+  const step1 = await fetch('/api/v1/storage/presigned-upload', {
+    method: 'POST',
+    headers: { ...authHeaders, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      assetType: type,
+      contentType: 'image/jpeg',
+      fileSizeBytes: imageFile.size,
+      isPublic: true,
+    }),
+  }).then(r => r.json());
+
+  // 2. PUT a R2
+  await fetch(step1.data.uploadUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'image/jpeg' },
+    body: imageFile,
+  });
+
+  // 3. Confirmar — el backend actualiza user.avatarUrl o user.bannerUrl
+  await fetch('/api/v1/storage/confirm-upload', {
+    method: 'POST',
+    headers: { ...authHeaders, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key: step1.data.key, assetType: type }),
+  });
+
+  // GET /users/me ahora devuelve avatarUrl/bannerUrl actualizado
+}
+```
+
+---
+
+### Subir video grande con multipart (React Native)
+
+```typescript
+async function uploadLargeVideo(
+  fileUri: string,
+  fileSize: number,
+  orgId: string,
+  eventId: string
+): Promise<string> {
+  // 1. Iniciar multipart
+  const init = await fetch('/api/v1/storage/multipart/initiate', {
+    method: 'POST',
+    headers: { ...authHeaders, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      assetType: 'reference-video',
+      contentType: 'video/mp4',
+      fileSizeBytes: fileSize,
+      partSizeBytes: 10 * 1024 * 1024,  // 10 MB por parte
+      orgId,
+      eventId,
+    }),
+  }).then(r => r.json());
+
+  const { uploadId, key, assetId, parts } = init.data;
+
+  // 2. Subir partes (5 en paralelo para mayor velocidad)
+  const completedParts = [];
+  for (let i = 0; i < parts.length; i += 5) {
+    const batch = parts.slice(i, i + 5);
+    const results = await Promise.all(
+      batch.map(async (part) => {
+        const start = (part.partNumber - 1) * 10 * 1024 * 1024;
+        const chunk = await readFileChunk(fileUri, start, 10 * 1024 * 1024);
+        const res = await fetch(part.uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'video/mp4' },
+          body: chunk,
+        });
+        return { partNumber: part.partNumber, etag: res.headers.get('ETag') };
+      })
+    );
+    completedParts.push(...results);
+  }
+
+  // 3. Completar
+  await fetch('/api/v1/storage/multipart/complete', {
+    method: 'POST',
+    headers: { ...authHeaders, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key, uploadId, parts: completedParts }),
+  });
+
+  return assetId;
+}
+```
+
+---
+
+### Reproducir audio del repertorio con caché offline
+
+```typescript
+import * as FileSystem from 'expo-file-system';
+import { Audio } from 'expo-av';
+
+async function playAsset(assetId: string): Promise<void> {
+  const localPath = `${FileSystem.cacheDirectory}asset_${assetId}`;
+  
+  // Intentar reproducir desde caché local (funciona offline)
+  const cached = await FileSystem.getInfoAsync(localPath);
+  let audioUri = cached.exists ? localPath : null;
+  
+  if (!audioUri) {
+    // Obtener URL firmada del backend
+    const { data } = await fetch(
+      `/api/v1/storage/assets/${assetId}/download`,
+      { headers: authHeaders }
+    ).then(r => r.json());
+    
+    // Descargar y cachear para uso offline futuro
+    const { uri } = await FileSystem.downloadAsync(data.downloadUrl, localPath);
+    audioUri = uri;
+  }
+  
+  const { sound } = await Audio.Sound.createAsync({ uri: audioUri });
+  await sound.playAsync();
+}
+```
+
+---
+
+### Mostrar foto de perfil
+
+```typescript
+// En el componente de perfil
+const { data } = await fetch('/api/v1/users/me/profile-urls', { headers: authHeaders }).then(r => r.json());
+
+// data.avatarUrl → URL directa (puede ser CDN o null si no tiene foto)
+// data.bannerUrl → URL directa del banner o null
+
+// React Native:
+<Image source={{ uri: data.avatarUrl ?? defaultAvatar }} style={styles.avatar} />
+```
+
+---
+
+### Buscar assets del repertorio
+
+```typescript
+const url = new URL('https://regieart-backend-production.up.railway.app/api/v1/storage/assets');
+url.searchParams.set('orgId', orgId);
+url.searchParams.append('assetType', 'audio-track');
+url.searchParams.append('assetType', 'music-score');
+url.searchParams.set('page', '1');
+url.searchParams.set('limit', '20');
+
+const { data } = await fetch(url.toString(), { headers: authHeaders }).then(r => r.json());
+// data.assets → array de Asset
+// data.total → total de resultados
+// data.totalPages → para paginación
+```
+
+---
+
+## 16. Preguntas Frecuentes — Jurado
+
+---
+
+**¿Por qué Cloudflare R2 y no AWS S3?**
+
+R2 tiene **egress gratuito** — las descargas no tienen costo. Para una app de música y videos donde los músicos descargan partituras y pistas constantemente, el ahorro es significativo. La API es 100% compatible con S3 (protocolo idéntico), por lo que una migración futura sería transparente para el código.
+
+---
+
+**¿El archivo pasa por los servidores de Railway?**
+
+No. El backend solo genera una URL firmada criptográficamente. El archivo viaja directamente del dispositivo del usuario a los servidores de Cloudflare (y viceversa). El backend no ve, no toca y no almacena el binario — solo los metadatos en PostgreSQL.
+
+---
+
+**¿Cómo se garantiza que un usuario no acceda a los archivos de otra organización?**
+
+Tres niveles independientes: (1) el backend verifica membresía en DB antes de generar cualquier URL firmada, (2) las rutas en R2 incluyen el UUID de la organización — sin la URL firmada del backend, la key no es accesible directamente, (3) las URLs firmadas tienen expiración (5-15 min) y están ligadas al objeto exacto y al método HTTP (GET/PUT).
+
+---
+
+**¿Qué pasa si el usuario cierra la app a mitad de una subida?**
+
+Los assets quedan en estado `PENDING`. El `StorageCleanupService` los detecta y elimina automáticamente después de 2 horas (cron horario), liberando el espacio en R2. Para multipart, las partes incompletas también se limpian. No hay intervención manual necesaria.
+
+---
+
+**¿Cómo funciona el multipart upload para un video de 257 MB?**
+
+El backend divide el archivo en 26 partes de 10 MB. El cliente sube cada parte con un PUT independiente a su propia URL firmada (pueden ir en paralelo — se recomienda 5 simultáneas). R2 mantiene las partes temporalmente. Una vez todas llegan, se llama a `complete` y R2 las ensambla en un único archivo atómicamente. Este es exactamente el protocolo que usa AWS S3, Google Cloud Storage y todos los grandes proveedores cloud.
+
+---
+
+**¿La app funciona sin internet después de descargar contenido?**
+
+Sí, si el frontend implementa caché local con `expo-file-system` (React Native). El backend provee las URLs — la app decide cuándo guardar en disco local. Una vez descargado, el audio o video se reproduce sin conexión. Para subidas siempre se requiere conexión.
+
+---
+
+**¿En qué calidad se ven las imágenes y videos?**
+
+R2 sirve exactamente el archivo subido, sin transformaciones. El frontend decide la calidad antes de subir (se recomienda comprimir imágenes a 1200px antes del PUT). Cuando `STORAGE_CDN_URL` esté configurado con un dominio Cloudflare, se puede activar **Cloudflare Image Resizing** para servir thumbnails automáticos: `?width=64&height=64&fit=cover` — sin almacenar múltiples versiones.
+
+---
+
+**¿Cómo maneja el sistema la caída de Redis?**
+
+`enableOfflineQueue: false` en ioredis hace que los comandos fallen **inmediatamente** en lugar de colgar durante 30-60 segundos esperando reconexión. Todos los servicios tienen try/catch que hace fall-through graceful: membresía va directo a DB, caché de URLs se salta, locks de cron no se adquieren (el job simplemente no corre ese ciclo). El sistema **degrada gracefully** — funciona sin caché, solo más lento.
+
+---
+
+**¿Por qué el `ThrottlerModule` es in-memory en lugar de Redis?**
+
+Al principio el throttler usaba Redis como store compartido (útil en escalado horizontal). Pero cuando Redis no estaba disponible, **todas** las peticiones fallaban con 500 — incluidas rutas sin relación con storage. Se tomó la decisión de cambiarlo a in-memory, que es suficiente para una sola instancia en producción. Si el sistema escala a múltiples instancias, se puede reconectar a Redis condicionalmente cuando la conexión esté disponible.
+
+---
+
+**¿Qué es la `key` de R2 y debe guardarla el frontend?**
+
+La `key` es la ruta interna del archivo en el bucket (`organizations/cmq.../repertoire/song-001/audio.mp3`). El frontend **no necesita guardarla** — solo necesita el `assetId` (CUID). El endpoint `GET /assets/:id/download` resuelve la URL usando el ID. La `key` solo aparece en el flujo de subida (devuelta por `presigned-upload` y requerida en `confirm-upload`), pero ambos ocurren en secuencia inmediata y no se necesita persistirla en el estado de la app.
