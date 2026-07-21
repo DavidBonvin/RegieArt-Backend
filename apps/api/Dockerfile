@@ -47,7 +47,10 @@ ENV PORT=3000
 
 EXPOSE 3000
 
-# Run Prisma migrations then start the server.
-# ../../node_modules/.bin/prisma resolves to /app/node_modules/.bin/prisma (root workspace bin).
-# ../../packages/database/prisma/schema.prisma resolves to /app/packages/database/prisma/schema.prisma.
-CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy --schema=../../packages/database/prisma/schema.prisma && node dist/main"]
+# Copy the startup script and make it executable.
+# The script runs prisma migrate deploy with automatic P3009 recovery,
+# then starts the Node server.
+COPY start.sh ./start.sh
+RUN chmod +x ./start.sh
+
+CMD ["./start.sh"]
