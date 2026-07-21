@@ -50,7 +50,7 @@ EXPOSE 3000
 # Copy the startup script and make it executable.
 # The script runs prisma migrate deploy with automatic P3009 recovery,
 # then starts the Node server.
-COPY start.sh ./start.sh
+COPY apps/api/start.sh ./start.sh
 RUN chmod +x ./start.sh
 
 CMD ["./start.sh"]
