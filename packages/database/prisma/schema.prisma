@@ -21,7 +21,7 @@ datasource db {
 
 model User {
   id          String   @id @default(cuid())
-  keycloakId  String   @unique // Sub del JWT de Keycloak
+  keycloakId  String   @unique
   email       String   @unique
   displayName String
   firstName   String?
@@ -30,37 +30,60 @@ model User {
   bannerUrl   String?
   phone       String?
   bio         String?
+  city        String?  // Ciudad base del músico
+  country     String?  // ISO 3166-1 alpha-2: "CA", "FR"
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  // Relaciones
-  memberships OrganizationMember[]
-  inviteLinks InviteLink[]
-  assets      Asset[]
+  memberships             OrganizationMember[]
+  inviteLinks             InviteLink[]
+  assets                  Asset[]
+  songs                   Song[]
+  venues                  Venue[]
+  events                  Event[]
+  eventRoster             EventRoster[]
+  vehiclePassengers       VehiclePassenger[]
+  skills                  UserSkill[]
+  notifications           Notification[]
+  sentMessages            Message[]             @relation("MessageSender")
+  receivedMessages        Message[]             @relation("MessageRecipient")
+  instrumentAssignments   InstrumentAssignment[]
+  createdInstruments      Instrument[]          @relation("InstrumentCreator")
+  createdFinanceEntries   FinanceEntry[]        @relation("EntryCreator")
+  approvedFinanceEntries  FinanceEntry[]        @relation("EntryApprover")
+  perDiemPayouts          PerDiemPayout[]       @relation("PerDiemRecipient")
+  perDiemPayoutsCreated   PerDiemPayout[]       @relation("PerDiemCreator")
 
   @@index([email])
+  @@index([city])
   @@map("users")
 }
 
 // ─── ORGANIZACIONES (Bandas / Agencias) ──────────────────────
 
 model Organization {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   name        String
-  slug        String   @unique // URL amigable: "los-reyes-del-son"
+  slug        String    @unique // URL amigable: "los-reyes-del-son"
   description String?
   logoUrl     String?
   website     String?
   phone       String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime? // Soft delete — la org sigue en DB hasta purga manual
 
-  // Relaciones
-  members     OrganizationMember[]
-  inviteLinks InviteLink[]
-  assets      Asset[]
+  members           OrganizationMember[]
+  inviteLinks       InviteLink[]
+  assets            Asset[]
+  songs             Song[]
+  events            Event[]
+  financeCategories FinanceCategory[]
+  financeEntries    FinanceEntry[]
+  perDiemPayouts    PerDiemPayout[]
+  instruments       Instrument[]
 
   @@index([slug])
   @@map("organizations")
@@ -76,6 +99,7 @@ model OrganizationMember {
   organizationId String
   role           MemberRole @default(MEMBER)
   joinedAt       DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 
   // Relaciones
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -148,7 +172,7 @@ model Asset {
   uploadedById  String                           // Usuario que generó la URL (siempre presente)
   orgId         String?                          // Organización propietaria (si aplica)
   songId        String?                          // Referencia a canción del repertorio
-  eventId       String?                          // Referencia a evento
+  eventId       String?                          // Referencia a evento (Event.id)
   memberId      String?                          // Miembro objetivo (docs legales RRHH)
 
   // ── Versionado ───────────────────────────────────────────
@@ -166,8 +190,10 @@ model Asset {
   updatedAt     DateTime    @updatedAt
 
   // ── Relaciones ORM ───────────────────────────────────────
-  uploadedBy    User         @relation(fields: [uploadedById], references: [id])
+  uploadedBy    User          @relation(fields: [uploadedById], references: [id])
   organization  Organization? @relation(fields: [orgId], references: [id])
+  song          Song?         @relation(fields: [songId], references: [id])
+  event         Event?        @relation(fields: [eventId], references: [id])
 
   @@index([orgId])
   @@index([uploadedById])
@@ -199,6 +225,169 @@ enum AssetStatus {
   DELETED     // Soft delete — pendiente de limpieza real en R2 por el cron job
 }
 
+// ─── SONGS (Repertorio) ──────────────────────────────────────
+// Cada canción pertenece a una organización. Sus archivos (partituras,
+// pistas de audio) se almacenan en R2 y se vinculan via Asset.songId.
+
+model Song {
+  id              String   @id @default(cuid())
+  orgId           String
+  title           String
+  composer        String?
+  arranger        String?
+  genre           String?
+  musicalKey      String?  // "Do mayor", "Re menor", "C major"
+  tempo           Int?     // BPM
+  durationSeconds Float?
+  notes           String?  // Notas internas del director
+  isActive        Boolean  @default(true)
+  createdById     String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation(fields: [createdById], references: [id])
+  assets       Asset[]      // partituras (MUSIC_SCORE) y pistas (AUDIO_TRACK)
+
+  @@index([orgId])
+  @@index([title])
+  @@map("songs")
+}
+
+// ─── VENUES (Salas / Escenarios) ─────────────────────────────
+// Directorio reutilizable de lugares de eventos.
+
+model Venue {
+  id                    String   @id @default(cuid())
+  name                  String
+  address               String?
+  city                  String
+  country               String   @default("CA")
+  capacity              Int?
+
+  // Geolocalización — requerida para el servicio de clima y mapas
+  latitude              Float?
+  longitude             Float?
+
+  // Logística operacional del día del evento
+  parkingNotes          String?  // Ej: "3 plazas reservadas — código barrera: 1234"
+  loadInNotes           String?  // Ej: "Muelle trasero, ascensor hasta las 18:00"
+
+  // Contacto técnico de sala
+  technicalContactName  String?
+  technicalContactPhone String?
+  technicalContactEmail String?
+  notes                 String?
+  timezone              String?  // IANA: "America/Toronto", "Europe/Paris"
+
+  createdById           String
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  createdBy User    @relation(fields: [createdById], references: [id])
+  events    Event[]
+
+  @@index([city])
+  @@map("venues")
+}
+
+// ─── EVENTS (Conciertos / Ensayos / Giras) ───────────────────
+// Entidad central de la app. Todos los módulos de producción,
+// finanzas e inventario giran en torno al evento.
+
+model Event {
+  id             String      @id @default(cuid())
+  orgId          String
+  title          String
+  type           EventType
+  status         EventStatus @default(DRAFT)
+  venueId        String?
+
+  startTime      DateTime
+  endTime        DateTime?
+  description    String?
+  isPublic       Boolean     @default(false)
+
+  // Producción
+  daysheetNotes  String?
+  itineraryNotes String?
+  setlistNotes   String?     // Setlist planeado o notas musicales del show
+
+  riderAssetId   String?
+
+  createdById    String
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  deletedAt      DateTime?
+
+  organization   Organization        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  venue          Venue?              @relation(fields: [venueId], references: [id])
+  createdBy      User                @relation(fields: [createdById], references: [id])
+  roster         EventRoster[]
+  assets         Asset[]
+  scheduleItems  EventScheduleItem[]
+  vehicles       EventVehicle[]
+  finance        EventFinance?
+  financeEntries        FinanceEntry[]
+  perDiemPayouts        PerDiemPayout[]
+  instrumentAssignments InstrumentAssignment[]
+
+  @@index([orgId])
+  @@index([startTime])
+  @@index([status])
+  @@index([type])
+  @@map("events")
+}
+
+// ─── EVENT ROSTER (Participantes de un Evento) ───────────────
+// Quién toca / trabaja en cada evento y cuál es su estado de confirmación.
+
+model EventRoster {
+  id            String           @id @default(cuid())
+  eventId       String
+  userId        String
+  role          String?          // "Trompeta", "Director Musical", "Técnico FOH"
+  status        AttendanceStatus @default(INVITED)
+  notes         String?          // Notas del admin al invitar
+  invitedAt     DateTime         @default(now())
+  respondedAt   DateTime?        // Cuándo confirmó o declinó
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@unique([eventId, userId])
+  @@index([eventId])
+  @@index([userId])
+  @@map("event_roster")
+}
+
+// ─── ENUMS NUEVOS ─────────────────────────────────────────────
+
+enum EventType {
+  CONCERT
+  REHEARSAL
+  AUDITION
+  TOUR_DATE
+  RECORDING_SESSION
+}
+
+enum EventStatus {
+  DRAFT
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+enum AttendanceStatus {
+  INVITED
+  CONFIRMED
+  DECLINED
+  NO_SHOW
+}
+
+// ─── ENUMS EXISTENTES ────────────────────────────────────────
+
 // Tipo semántico del archivo — determina política de MIME, tamaño y ruta
 enum AssetType {
   USER_AVATAR
@@ -211,3 +400,366 @@ enum AssetType {
   REFERENCE_VIDEO
   LEGAL_DOCUMENT
 }
+
+// ─── MÓDULO DAYSHEET: LOGÍSTICA OPERATIVA ────────────────────
+
+// ─── CRONOGRAMA GRANULAR DEL DÍA ─────────────────────────────
+// Cada item es un bloque horario del día del evento.
+// El campo isCompleted permite tracking en vivo desde el móvil.
+
+enum ScheduleType {
+  DEPARTURE        // Salida / Viaje
+  ARRIVAL          // Llegada al recinto
+  LOAD_IN          // Carga y descarga de equipos
+  SOUNDCHECK       // Prueba de sonido / Balance
+  DOORS_OPEN       // Apertura de puertas al público
+  CATERING_DINNER  // Comida / Cena
+  SHOWTIME         // Actuación
+  LOAD_OUT         // Recogida de material
+  OTHER            // Otro ítem personalizado
+}
+
+model EventScheduleItem {
+  id          String       @id @default(cuid())
+  eventId     String
+  type        ScheduleType
+  title       String       // Ej: "Balance con sonidista Jean Dupont"
+  startTime   DateTime
+  endTime     DateTime?
+  location    String?      // Ej: "Escenario Principal"
+  withWho     String?      // Ej: "Con FOH Jean Dupont"
+  notes       String?
+
+  // Tracking en vivo: el músico marca el ítem como completado en el móvil
+  isCompleted Boolean      @default(false)
+  completedAt DateTime?
+
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, startTime])
+  @@map("event_schedule_items")
+}
+
+// ─── LOGÍSTICA DE TRANSPORTE ──────────────────────────────────
+// Vehículos, quién va en cada uno y puntos de recogida con horario.
+
+model EventVehicle {
+  id          String @id @default(cuid())
+  eventId     String
+  name        String  // Ej: "Furgoneta Backline", "Coche Director"
+  driverName  String?
+  driverPhone String?
+  plateNumber String? // Matrícula — útil en el parking del recinto
+  capacity    Int?    // Número de plazas disponibles
+  notes       String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  event      Event                @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  passengers VehiclePassenger[]
+  pickups    VehiclePickupPoint[]
+
+  @@index([eventId])
+  @@map("event_vehicles")
+}
+
+model VehiclePassenger {
+  id        String @id @default(cuid())
+  vehicleId String
+  userId    String
+
+  vehicle EventVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([vehicleId, userId])
+  @@index([vehicleId])
+  @@map("vehicle_passengers")
+}
+
+model VehiclePickupPoint {
+  id        String   @id @default(cuid())
+  vehicleId String
+  time      DateTime // Hora exacta de recogida
+  address   String   // Ej: "Estación Central / Casa de Juan"
+  lat       Float?   // Para mostrar en mapa en el móvil
+  lng       Float?
+  order     Int      @default(0) // Orden de la parada en la ruta
+  notes     String?  // Ej: "Estar en la puerta con instrumento listo"
+
+  vehicle EventVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId])
+  @@map("vehicle_pickup_points")
+}
+
+// ─── FINANZAS DEL EVENTO ──────────────────────────────────────
+// Registro único por evento: caché total, viáticos y estado de cobro.
+// Relación 1:1 con Event (eventId @unique).
+
+model EventFinance {
+  id             String   @id @default(cuid())
+  eventId        String   @unique
+
+  cacheTotal     Decimal? @db.Decimal(10, 2) // Monto total cobrado por el grupo
+  perDiemAmount  Decimal? @db.Decimal(10, 2) // Dieta estándar por músico
+  currency       String   @default("EUR")
+  isPaid         Boolean  @default(false)
+  paidAt         DateTime?
+
+  paymentNotes   String?  // Ej: "50% previo, 50% en mano al terminar"
+  invoiceAssetId String?  // ID del Asset PDF de la factura/contrato en R2
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@map("event_finance")
+}
+
+// ─── SPRINT 4: FINANZAS GRANULARES ───────────────────────────
+
+enum EntryType {
+  INCOME
+  EXPENSE
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model FinanceCategory {
+  id    String    @id @default(cuid())
+  orgId String
+  name  String
+  type  EntryType
+  icon  String?   // emoji o nombre de icono para la UI
+
+  organization Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  entries      FinanceEntry[]
+
+  @@unique([orgId, name, type])
+  @@index([orgId])
+  @@map("finance_categories")
+}
+
+model FinanceEntry {
+  id           String         @id @default(cuid())
+  orgId        String
+  eventId      String?
+  categoryId   String?
+  type         EntryType
+  amount       Decimal        @db.Decimal(10, 2)
+  currency     String         @default("EUR")
+  description  String?
+  proofAssetId String?        // Asset.id del comprobante fotográfico en R2
+  status       ApprovalStatus @default(PENDING)
+  date         DateTime
+  paidAt       DateTime?
+  createdById  String
+  approvedById String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  organization Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  event        Event?           @relation(fields: [eventId], references: [id])
+  category     FinanceCategory? @relation(fields: [categoryId], references: [id])
+  createdBy    User             @relation("EntryCreator",  fields: [createdById],  references: [id])
+  approvedBy   User?            @relation("EntryApprover", fields: [approvedById], references: [id])
+
+  @@index([orgId])
+  @@index([eventId])
+  @@index([status])
+  @@map("finance_entries")
+}
+
+model PerDiemPayout {
+  id          String   @id @default(cuid())
+  orgId       String
+  eventId     String?
+  userId      String
+  amount      Decimal  @db.Decimal(10, 2)
+  currency    String   @default("EUR")
+  description String?
+  isPaid      Boolean  @default(false)
+  paidAt      DateTime?
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  event        Event?       @relation(fields: [eventId], references: [id])
+  user         User         @relation("PerDiemRecipient", fields: [userId],      references: [id])
+  createdBy    User         @relation("PerDiemCreator",   fields: [createdById], references: [id])
+
+  @@index([orgId])
+  @@index([userId])
+  @@map("per_diem_payouts")
+}
+
+// ─── SPRINT 5: HABILIDADES ───────────────────────────────────
+
+enum SkillCategoryType {
+  INSTRUMENT
+  TECHNICAL
+  MANAGEMENT
+}
+
+enum ExpertiseLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  PROFESSIONAL
+}
+
+model SkillCategory {
+  id   String            @id @default(cuid())
+  name String            @unique // "Trompeta", "Director Musical", "Técnico FOH"
+  type SkillCategoryType
+  icon String?           // emoji
+
+  userSkills UserSkill[]
+
+  @@map("skill_categories")
+}
+
+model UserSkill {
+  id              String         @id @default(cuid())
+  userId          String
+  skillCategoryId String
+  expertiseLevel  ExpertiseLevel @default(INTERMEDIATE)
+  yearsExp        Int?
+  createdAt       DateTime       @default(now())
+
+  user          User          @relation(fields: [userId],          references: [id], onDelete: Cascade)
+  skillCategory SkillCategory @relation(fields: [skillCategoryId], references: [id])
+
+  @@unique([userId, skillCategoryId])
+  @@index([skillCategoryId])
+  @@map("user_skills")
+}
+
+// ─── SPRINT 6: INVENTARIO & BACKLINE ─────────────────────────
+
+enum InstrumentType {
+  BRASS
+  WOODWIND
+  STRING
+  KEYBOARD
+  PERCUSSION
+  AUDIO_GEAR
+  LIGHTING
+  OTHER
+}
+
+enum InstrumentStatus {
+  AVAILABLE
+  IN_USE
+  MAINTENANCE
+  RETIRED
+}
+
+model Instrument {
+  id           String           @id @default(cuid())
+  orgId        String
+  name         String
+  brand        String?
+  model        String?
+  serialNumber String?
+  type         InstrumentType
+  status       InstrumentStatus @default(AVAILABLE)
+  notes        String?
+  specAssetId  String?          // Asset ID de la ficha técnica (PDF/XML)
+  isActive     Boolean          @default(true)
+  createdById  String
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  organization Organization           @relation(fields: [orgId],       references: [id], onDelete: Cascade)
+  createdBy    User                   @relation("InstrumentCreator", fields: [createdById], references: [id])
+  assignments  InstrumentAssignment[]
+
+  @@index([orgId])
+  @@index([type])
+  @@map("instruments")
+}
+
+model InstrumentAssignment {
+  id           String   @id @default(cuid())
+  instrumentId String
+  userId       String?
+  eventId      String?
+  assignedAt   DateTime @default(now())
+  returnedAt   DateTime?
+  notes        String?
+
+  instrument Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+  user       User?      @relation(fields: [userId],       references: [id])
+  event      Event?     @relation(fields: [eventId],      references: [id])
+
+  @@index([instrumentId])
+  @@index([userId])
+  @@map("instrument_assignments")
+}
+
+// ─── SPRINT 7: NOTIFICACIONES ────────────────────────────────
+
+enum NotificationType {
+  INVITE_ACCEPTED      // Alguien aceptó tu invitación
+  EVENT_ASSIGNED       // Te añadieron a un evento
+  EVENT_CONFIRMED      // Un evento fue confirmado
+  EVENT_CANCELLED      // Un evento fue cancelado
+  ROSTER_UPDATED       // El roster del evento cambió
+  EXPENSE_APPROVED     // Tu gasto fue aprobado
+  EXPENSE_REJECTED     // Tu gasto fue rechazado
+  ROLE_CHANGED         // Tu rol en la org cambió
+  DAYSHEET_UPDATED     // El Day Sheet fue actualizado
+  INSTRUMENT_ASSIGNED  // Te asignaron un instrumento
+  MESSAGE_RECEIVED     // Nuevo mensaje directo
+}
+
+model Notification {
+  id          String           @id @default(cuid())
+  recipientId String
+  type        NotificationType
+  title       String
+  body        String?
+  sourceId    String?          // ID del objeto relacionado (eventId, entryId...)
+  sourceType  String?          // "event", "finance_entry", "message"
+  isRead      Boolean          @default(false)
+  readAt      DateTime?
+  createdAt   DateTime         @default(now())
+
+  recipient User @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, isRead])
+  @@index([recipientId, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+// ─── SPRINT 7: MENSAJES DIRECTOS ─────────────────────────────
+
+model Message {
+  id          String   @id @default(cuid())
+  senderId    String
+  recipientId String
+  orgId       String?  // contexto opcional de la org
+  body        String
+  isRead      Boolean  @default(false)
+  readAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  sender    User @relation("MessageSender",    fields: [senderId],    references: [id])
+  recipient User @relation("MessageRecipient", fields: [recipientId], references: [id])
+
+  @@index([senderId, recipientId])
+  @@index([recipientId, isRead])
+  @@map("messages")
+}
+

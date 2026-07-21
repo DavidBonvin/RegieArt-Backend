@@ -9,6 +9,13 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { StorageModule } from './storage/storage.module';
+import { SongsModule } from './songs/songs.module';
+import { EventsModule } from './events/events.module';
+import { DaysheetModule } from './daysheet/daysheet.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { FinanceModule } from './finance/finance.module';
+import { SkillsModule } from './skills/skills.module';
+import { InventoryModule } from './inventory/inventory.module';
 
 @Module({
   imports: [
@@ -36,6 +43,13 @@ import { StorageModule } from './storage/storage.module';
     UsersModule,
     OrganizationsModule,
     StorageModule,
+    SongsModule,
+    EventsModule,
+    DaysheetModule,
+    NotificationsModule,
+    FinanceModule,
+    SkillsModule,
+    InventoryModule,
   ],
   providers: [
     // ─── Activa el ThrottlerGuard globalmente para toda la aplicación

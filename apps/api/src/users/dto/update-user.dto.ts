@@ -24,4 +24,12 @@ export class UpdateUserDto {
   @IsString()
   @IsOptional()
   bio?: string;
+
+  @IsString()
+  @IsOptional()
+  city?: string;
+
+  @IsString()
+  @IsOptional()
+  country?: string;
 }
