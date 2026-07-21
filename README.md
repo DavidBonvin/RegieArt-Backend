@@ -28,7 +28,7 @@ Plataforma de gestión integral para bandas y agencias artísticas: organizacion
 20. [Correr los tests](#20-correr-los-tests)
 21. [Variables de entorno](#21-variables-de-entorno)
 22. [Migraciones aplicadas](#22-migraciones-aplicadas)
-
+fddf
 ---
 
 ## 1. Stack técnico
