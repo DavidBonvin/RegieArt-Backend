@@ -67,6 +67,7 @@ export class EventsService {
         isPublic: dto.isPublic ?? false,
         daysheetNotes: dto.daysheetNotes,
         itineraryNotes: dto.itineraryNotes,
+        setlistNotes: dto.setlistNotes,
         createdById: userId,
       },
       include: { venue: true },

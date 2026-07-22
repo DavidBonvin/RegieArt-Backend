@@ -55,4 +55,8 @@ export class CreateEventDto {
   @IsString()
   @IsOptional()
   itineraryNotes?: string;
+
+  @IsString()
+  @IsOptional()
+  setlistNotes?: string;
 }

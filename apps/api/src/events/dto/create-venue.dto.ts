@@ -63,4 +63,8 @@ export class CreateVenueDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  @IsString()
+  @IsOptional()
+  timezone?: string;  // IANA: "America/Toronto", "Europe/Paris"
 }

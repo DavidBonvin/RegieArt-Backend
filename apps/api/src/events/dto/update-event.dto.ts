@@ -50,4 +50,8 @@ export class UpdateEventDto {
   @IsString()
   @IsOptional()
   riderAssetId?: string;
+
+  @IsString()
+  @IsOptional()
+  setlistNotes?: string;
 }
