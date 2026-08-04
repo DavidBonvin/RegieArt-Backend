@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { OrganizationsService } from './organizations.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { MemberRole } from '@regieart/types';
 import { NotFoundException, ForbiddenException } from '@nestjs/common';
 
@@ -26,6 +27,10 @@ describe('OrganizationsService', () => {
               update: jest.fn(),
             },
           },
+        },
+        {
+          provide: NotificationsService,
+          useValue: { fire: jest.fn() },
         },
       ],
     }).compile();
@@ -78,7 +83,12 @@ describe('OrganizationsService', () => {
       jest.spyOn(prismaService.organizationMember, 'findUnique').mockResolvedValue({
         role: MemberRole.OWNER,
       } as any);
-      jest.spyOn(prismaService.organizationMember, 'update').mockResolvedValue({ id: 'member-1', role: MemberRole.ADMIN } as any);
+      jest.spyOn(prismaService.organizationMember, 'update').mockResolvedValue({
+        id: 'member-1',
+        role: MemberRole.ADMIN,
+        user: { id: 'user-2', displayName: 'Test User' },
+        organization: { name: 'Test Org' },
+      } as any);
 
       const result = await service.updateMemberRole('user-1', 'org-1', 'member-1', { role: MemberRole.ADMIN });
       expect(result.role).toBe(MemberRole.ADMIN);

@@ -22,16 +22,16 @@ import { StorageObjectService } from './storage-object.service';
 import { StorageAssetService } from './storage-asset.service';
 import { RedisService } from '../../redis/redis.service';
 
-// Assets PENDING más viejos que esto se consideran abandonados
+// Assets PENDING older than this are considered abandoned
 const PENDING_EXPIRY_HOURS = 24;
 
-// Máximo de assets purgados por ciclo (evita timeouts en jobs de batch grandes)
+// Maximum assets purged per cycle (avoids timeouts on large batch jobs)
 const PURGE_BATCH_SIZE = 100;
 
-// TTL de los locks de Redis (en segundos).
-// Debe ser mayor que el tiempo máximo esperado de ejecución del job.
-const LOCK_TTL_PENDING = 120;   // 2 min — job rápido
-const LOCK_TTL_PURGE   = 600;   // 10 min — job lento (puede procesar muchos assets)
+// TTL for Redis locks (in seconds).
+// Must be longer than the maximum expected execution time of the job.
+const LOCK_TTL_PENDING = 120;   // 2 min — fast job
+const LOCK_TTL_PURGE   = 600;   // 10 min — slow job (may process many assets)
 
 const LOCK_KEY_PENDING = 'storage:lock:cleanup-pending';
 const LOCK_KEY_PURGE   = 'storage:lock:purge-deleted';
@@ -46,64 +46,64 @@ export class StorageCleanupService {
     private readonly redis: RedisService,
   ) {}
 
-  // ── Job 1: Limpiar Assets PENDING expirados ────────────────
-  // Frecuencia: cada hora.
-  // Lock: garantiza que solo una instancia ejecuta el job a la vez.
+  // ── Job 1: Clean expired PENDING assets ─────────────────
+  // Frequency: every hour.
+  // Lock: ensures only one instance runs the job at a time.
   @Cron(CronExpression.EVERY_HOUR)
   async cleanExpiredPendingAssets(): Promise<void> {
     const redis = this.redis.getClient();
 
-    // Intentar adquirir lock (SET NX — solo escribe si no existe)
+    // Try to acquire lock (SET NX — only writes if key does not exist)
     const acquired = await redis.set(LOCK_KEY_PENDING, '1', 'EX', LOCK_TTL_PENDING, 'NX');
     if (!acquired) {
-      this.logger.debug('cleanExpiredPendingAssets: lock ocupado, saltando ejecución.');
+      this.logger.debug('cleanExpiredPendingAssets: lock busy, skipping execution.');
       return;
     }
 
     try {
-      this.logger.log('Iniciando limpieza de assets PENDING expirados...');
+      this.logger.log('Starting cleanup of expired PENDING assets...');
       const expired = await this.assetService.findExpiredPending(PENDING_EXPIRY_HOURS);
 
       if (expired.length === 0) {
-        this.logger.debug('No hay assets PENDING expirados.');
+        this.logger.debug('No expired PENDING assets found.');
         return;
       }
 
       const ids = expired.map((a) => a.id);
       await this.assetService.hardDelete(ids);
 
-      this.logger.log(`Limpieza PENDING: ${expired.length} asset(s) eliminados de la DB.`);
+      this.logger.log(`PENDING cleanup: ${expired.length} asset(s) removed from DB.`);
     } catch (error) {
       this.logger.error(
-        'Error en limpieza de assets PENDING:',
+        'Error during PENDING asset cleanup:',
         error instanceof Error ? error.message : error,
       );
     } finally {
-      // Liberar el lock siempre — incluso si el job falló
+      // Always release the lock — even if the job failed
       await redis.del(LOCK_KEY_PENDING);
     }
   }
 
-  // ── Job 2: Purgar assets soft-deleted de R2 ────────────────
-  // Frecuencia: cada día a las 3:00 AM.
-  // Solo procesa assets con deletedAt < 24h atrás (período de gracia ante borrados accidentales).
-  // Lock: garantiza que solo una instancia purga a la vez.
+  // ── Job 2: Purge soft-deleted assets from R2 ──────────────
+  // Frequency: daily at 3:00 AM.
+  // Only processes assets with deletedAt > 24h ago (grace period for accidental deletes).
+  // Lock: ensures only one instance runs the purge at a time.
   @Cron('0 3 * * *')
   async purgeDeletedAssets(): Promise<void> {
     const redis = this.redis.getClient();
 
     const acquired = await redis.set(LOCK_KEY_PURGE, '1', 'EX', LOCK_TTL_PURGE, 'NX');
     if (!acquired) {
-      this.logger.debug('purgeDeletedAssets: lock ocupado, saltando ejecución.');
+      this.logger.debug('purgeDeletedAssets: lock busy, skipping execution.');
       return;
     }
 
     try {
-      this.logger.log('Iniciando purga de assets eliminados en R2...');
+      this.logger.log('Starting purge of deleted assets in R2...');
       const toDelete = await this.assetService.findDeletedForPurge();
 
       if (toDelete.length === 0) {
-        this.logger.debug('No hay assets pendientes de purga en R2.');
+        this.logger.debug('No assets pending purge in R2.');
         return;
       }
 
@@ -115,19 +115,19 @@ export class StorageCleanupService {
           await this.objectService.deleteObject(asset.key);
           purgedIds.push(asset.id);
         } catch (error) {
-          this.logger.warn(`No se pudo borrar key="${asset.key}" de R2: ${String(error)}`);
+          this.logger.warn(`Failed to delete key="${asset.key}" from R2: ${String(error)}`);
         }
       }
 
       if (purgedIds.length > 0) {
         await this.assetService.hardDelete(purgedIds);
         this.logger.log(
-          `Purga completada: ${purgedIds.length}/${batch.length} asset(s) eliminados.`,
+          `Purge complete: ${purgedIds.length}/${batch.length} asset(s) deleted.`,
         );
       }
     } catch (error) {
       this.logger.error(
-        'Error en purga de assets:',
+        'Error during asset purge:',
         error instanceof Error ? error.message : error,
       );
     } finally {
