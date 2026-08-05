@@ -456,6 +456,14 @@ model EventVehicle {
   capacity    Int?    // Número de plazas disponibles
   notes       String?
 
+  // ─── Geo / Route (GeoModule) ────────────────────────────────
+  originAddress        String?   // Free-text departure address
+  originLat            Float?    // Geocoded coordinates of departure
+  originLng            Float?
+  routeDistanceKm      Float?    // Stored after route calculation
+  routeDurationMin     Int?      // Stored after route calculation
+  suggestedDepartureAt DateTime? // Calculated: eventStartTime - routeDuration - pickup buffers
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
