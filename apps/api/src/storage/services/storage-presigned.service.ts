@@ -200,42 +200,22 @@ export class StoragePresignedService {
   // a un tipo sensible, se usa expiración corta (1 min) y se omite la caché Redis.
   async generateDownloadUrl(userId: string, key: string, assetType?: string): Promise<string> {
     // ── 1. Ownership check ──────────────────────────────────────
-    if (key.startsWith('profiles/')) {
-      const ownerSegment = key.split('/')[1];
-      if (ownerSegment !== userId) {
-        throw new ForbiddenException(
-          'No tienes permiso para acceder a este archivo.',
-        );
-      }
-    } else if (key.startsWith('organizations/')) {
-      const orgId = key.split('/')[1];
-      await this.membership.assertMembership(userId, orgId);
-    } else {
-      throw new ForbiddenException(
-        'La clave del archivo tiene un formato de ruta desconocido.',
-      );
-    }
+    await this.assertKeyAccess(userId, key);
 
-    // ── 2. Fast path CDN para assets públicos ─────────────────
-    // Si CDN está configurado y el asset es público, no necesitamos firmar nada —
-    // la URL pública del CDN es suficiente y no expira.
-    if (this.cdnBaseUrl) {
-      const asset = await this.assetService.findByKey(key);
-      if (asset?.isPublic) {
-        const cdnUrl = `${this.cdnBaseUrl.replace(/\/$/, '')}/${key}`;
-        this.logger.debug(`Download URL fast-path CDN (public): key="${key}"`);
-        return cdnUrl;
-      }
-    }
+    // ── 2. CDN fast path for public assets ─────────────────────
+    // If CDN is configured and the asset is public, no signing needed —
+    // the CDN public URL is sufficient and never expires.
+    const cdnUrl = await this.tryGetPublicCdnUrl(key);
+    if (cdnUrl) return cdnUrl;
 
-    // Documentos sensibles: URL de vida corta (1 min) sin caché Redis.
-    // Cada descarga requiere una petición al backend → trazabilidad + mínima exposición.
+    // Sensitive documents: short-lived URL (1 min) without Redis cache.
+    // Each download requires a backend request → traceability + minimal exposure.
     const isSensitive = assetType !== undefined && SENSITIVE_ASSET_TYPES.has(assetType);
     const expirySeconds = isSensitive ? SENSITIVE_DOWNLOAD_EXPIRY_SECONDS : DOWNLOAD_EXPIRY_SECONDS;
 
     const cacheKey = `${DOWNLOAD_URL_CACHE_PREFIX}${key}`;
 
-    // ── 3. Buscar en caché Redis (omitir para tipos sensibles) ──
+    // ── 3. Check Redis cache (skip for sensitive types) ──────────
     if (!isSensitive) {
       try {
         const redis = this.redis.getClient();
@@ -245,12 +225,12 @@ export class StoragePresignedService {
           return cached;
         }
       } catch (cacheError) {
-        // Si Redis falla, continuamos sin caché — nunca bloquear la descarga
-        this.logger.warn(`Redis no disponible para cache de download URL: ${String(cacheError)}`);
+        // If Redis is unavailable, continue without cache — never block downloads
+        this.logger.warn(`Redis unavailable for download URL cache: ${String(cacheError)}`);
       }
     }
 
-    // ── 4. Firmar URL con R2 ────────────────────────────────────
+    // ── 4. Sign URL with R2 ────────────────────────────────────
     try {
       const url = await getSignedUrl(
         this.s3,
@@ -258,40 +238,71 @@ export class StoragePresignedService {
         { expiresIn: expirySeconds },
       );
 
-      // Guardar en caché solo para tipos no sensibles
+      // Cache only for non-sensitive types
       if (!isSensitive) {
         try {
           const redis = this.redis.getClient();
           await redis.setex(cacheKey, DOWNLOAD_CACHE_TTL, url);
         } catch {
-          // Error de escritura en caché — no crítico
+          this.logger.debug(`Redis cache write skipped for download URL: key="${key}"`);
+          // Cache write error — non-critical
         }
       }
 
       this.logger.debug(
-        `Download URL generada: key="${key}" expiry=${expirySeconds}s sensitive=${isSensitive}`,
+        `Download URL generated: key="${key}" expiry=${expirySeconds}s sensitive=${isSensitive}`,
       );
       return url;
     } catch (error) {
       this.logger.error(
-        `Fallo al firmar URL de descarga para key="${key}"`,
+        `Failed to sign download URL for key="${key}"`,
         error instanceof Error ? error.stack : error,
       );
       throw new InternalServerErrorException(
-        'No se pudo generar la URL de descarga. Inténtalo de nuevo.',
+        'Failed to generate the download URL. Please try again.',
       );
     }
   }
 
-  // ── Invalida el caché de una URL de descarga ───────────────
-  // Llamar cuando un archivo es eliminado o reemplazado para evitar
-  // que se sirvan URLs válidas de objetos ya inexistentes.
+  // ── Validates that the requesting user has access to the given key ──
+  // profiles/<userId>/*  → caller must be the profile owner
+  // organizations/<id>/* → caller must be an active org member
+  private async assertKeyAccess(userId: string, key: string): Promise<void> {
+    if (key.startsWith('profiles/')) {
+      const ownerSegment = key.split('/')[1];
+      if (ownerSegment !== userId) {
+        throw new ForbiddenException('You do not have permission to access this file.');
+      }
+    } else if (key.startsWith('organizations/')) {
+      const orgId = key.split('/')[1];
+      await this.membership.assertMembership(userId, orgId);
+    } else {
+      throw new ForbiddenException('The file key has an unknown path format.');
+    }
+  }
+
+  // ── Returns the public CDN URL if the asset is public, null otherwise ──
+  private async tryGetPublicCdnUrl(key: string): Promise<string | null> {
+    if (!this.cdnBaseUrl) return null;
+    const asset = await this.assetService.findByKey(key);
+    if (asset?.isPublic) {
+      const cdnUrl = `${this.cdnBaseUrl.replace(/\/$/, '')}/${key}`;
+      this.logger.debug(`Download URL fast-path CDN (public): key="${key}"`);
+      return cdnUrl;
+    }
+    return null;
+  }
+
+  // ── Invalidates the download URL cache ────────────────────────
+  // Call when a file is deleted or replaced to prevent
+  // serving valid URLs pointing to already-deleted objects.
   async invalidateDownloadCache(key: string): Promise<void> {
     try {
       const redis = this.redis.getClient();
       await redis.del(`${DOWNLOAD_URL_CACHE_PREFIX}${key}`);
     } catch {
-      // No crítico
+      this.logger.debug(`Redis invalidation skipped for key="${key}"`);
+      // Non-critical
     }
   }
 }

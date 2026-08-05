@@ -9,6 +9,8 @@ import { UpdateSongDto } from './dto/update-song.dto';
 import { SearchSongsDto } from './dto/search-songs.dto';
 import { MemberRole } from '@regieart/types';
 
+const SONG_NOT_FOUND = 'Song not found';
+
 @Injectable()
 export class SongsService {
   constructor(private prisma: PrismaService) {}
@@ -36,23 +38,23 @@ export class SongsService {
     const { orgId, search, genre, page = 1, limit = 20 } = query;
     const skip = (page - 1) * limit;
 
-    // Si viene orgId, verificar membresía
+    // If orgId is provided, verify membership
     if (orgId) {
       await this.requireMembership(userId, orgId);
     } else {
-      // Sin orgId: devuelve canciones de todas las orgs del usuario
+      // Without orgId: returns songs from all the user's organizations
     }
 
-    const where: any = {
+    const where = {
       deletedAt: null,
       isActive: true,
       ...(orgId && { orgId }),
       ...(genre && { genre }),
       ...(search && {
         OR: [
-          { title: { contains: search, mode: 'insensitive' } },
-          { composer: { contains: search, mode: 'insensitive' } },
-          { arranger: { contains: search, mode: 'insensitive' } },
+          { title:    { contains: search, mode: 'insensitive' as const } },
+          { composer: { contains: search, mode: 'insensitive' as const } },
+          { arranger: { contains: search, mode: 'insensitive' as const } },
         ],
       }),
     };
@@ -91,14 +93,14 @@ export class SongsService {
       },
     });
 
-    if (!song) throw new NotFoundException('Song not found');
+    if (!song) throw new NotFoundException(SONG_NOT_FOUND);
     await this.requireMembership(userId, song.orgId);
     return song;
   }
 
   async update(userId: string, id: string, dto: UpdateSongDto) {
     const song = await this.prisma.song.findFirst({ where: { id, deletedAt: null } });
-    if (!song) throw new NotFoundException('Song not found');
+    if (!song) throw new NotFoundException(SONG_NOT_FOUND);
     await this.requireAdminOrOwner(userId, song.orgId);
 
     return this.prisma.song.update({ where: { id }, data: dto });
@@ -106,7 +108,7 @@ export class SongsService {
 
   async remove(userId: string, id: string) {
     const song = await this.prisma.song.findFirst({ where: { id, deletedAt: null } });
-    if (!song) throw new NotFoundException('Song not found');
+    if (!song) throw new NotFoundException(SONG_NOT_FOUND);
     await this.requireAdminOrOwner(userId, song.orgId);
 
     await this.prisma.song.update({ where: { id }, data: { deletedAt: new Date(), isActive: false } });

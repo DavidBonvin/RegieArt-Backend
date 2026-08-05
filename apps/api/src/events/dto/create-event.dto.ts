@@ -5,8 +5,6 @@ import {
   IsEnum,
   IsBoolean,
   IsDateString,
-  IsInt,
-  Min,
 } from 'class-validator';
 
 export enum EventType {

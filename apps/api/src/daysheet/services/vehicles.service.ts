@@ -137,8 +137,11 @@ export class VehiclesService {
     await this.getVehicleOrFail(vehicleId, eventId);
     await this.getPickupOrFail(pickupId, vehicleId);
 
-    const data: any = { ...dto };
-    if (dto.time) data.time = new Date(dto.time);
+    const { time: timeStr, ...dtoRest } = dto;
+    const data = {
+      ...dtoRest,
+      ...(timeStr && { time: new Date(timeStr) }),
+    };
 
     return this.prisma.vehiclePickupPoint.update({ where: { id: pickupId }, data });
   }

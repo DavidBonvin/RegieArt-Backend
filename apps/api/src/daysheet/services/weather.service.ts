@@ -16,6 +16,24 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../../redis/redis.service';
 
+interface WeatherApiResponse {
+  location: { name: string; region: string; country: string };
+  forecast: {
+    forecastday: Array<{
+      date: string;
+      day: {
+        condition: { text: string; icon: string; code: number };
+        maxtemp_c: number; mintemp_c: number; avgtemp_c: number;
+        maxwind_kph: number;
+        daily_chance_of_rain: number; daily_chance_of_snow: number;
+        daily_will_it_rain: number;  daily_will_it_snow: number;
+        totalprecip_mm: number; avghumidity: number; uv: number;
+      };
+      astro: { sunrise: string; sunset: string };
+    }>;
+  };
+}
+
 export interface WeatherForecast {
   available: boolean;
   reason?: string;           // Mensaje si no hay datos disponibles
@@ -72,6 +90,7 @@ export class WeatherService {
       const cached = await this.redis.getClient().get(cacheKey);
       if (cached) return JSON.parse(cached) as WeatherForecast;
     } catch {
+      this.logger.debug('Redis unavailable, bypassing weather cache read');
       // Redis down → ignorar caché, ir a la API
     }
 
@@ -111,6 +130,7 @@ export class WeatherService {
       try {
         await this.redis.getClient().setex(cacheKey, ttl, JSON.stringify(forecast));
       } catch {
+        this.logger.debug('Redis unavailable, weather forecast not cached');
         // Redis down → continuar sin caché
       }
 
@@ -136,7 +156,7 @@ export class WeatherService {
       const body = await res.text();
       throw new Error(`WeatherAPI ${res.status}: ${body}`);
     }
-    const data: any = await res.json();
+    const data = await res.json() as WeatherApiResponse;
     return this.mapForecastDay(data, 'forecast', now);
   }
 
@@ -153,12 +173,12 @@ export class WeatherService {
       const body = await res.text();
       throw new Error(`WeatherAPI history ${res.status}: ${body}`);
     }
-    const data: any = await res.json();
+    const data = await res.json() as WeatherApiResponse;
     return this.mapForecastDay(data, 'history', now);
   }
 
   private mapForecastDay(
-    data: any,
+    data: WeatherApiResponse,
     source: 'forecast' | 'history',
     now: Date,
   ): WeatherForecast {

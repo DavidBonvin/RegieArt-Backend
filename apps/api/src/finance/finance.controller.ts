@@ -21,12 +21,14 @@ import { UpdateFinanceEntryDto } from './dto/update-finance-entry.dto';
 import { CreatePerDiemDto } from './dto/create-per-diem.dto';
 import { QueryFinanceDto } from './dto/query-finance.dto';
 
+const ENTRY_ROUTE = 'entries/:id';
+
 @UseGuards(JwtAuthGuard)
 @Controller('finance')
 export class FinanceController {
   constructor(private readonly financeService: FinanceService) {}
 
-  // ─── Categorías ──────────────────────────────────────────────
+  // ─── Categories ──────────────────────────────────────────────
   @Post('categories')
   createCategory(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateFinanceCategoryDto) {
     return this.financeService.createCategory(user.id, dto);
@@ -43,7 +45,7 @@ export class FinanceController {
     return this.financeService.deleteCategory(user.id, id);
   }
 
-  // ─── Entradas ────────────────────────────────────────────────
+  // ─── Entries ──────────────────────────────────────────────────
   @Post('entries')
   createEntry(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateFinanceEntryDto) {
     return this.financeService.createEntry(user.id, dto);
@@ -54,12 +56,12 @@ export class FinanceController {
     return this.financeService.getEntries(user.id, query);
   }
 
-  @Get('entries/:id')
+  @Get(ENTRY_ROUTE)
   getEntry(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.financeService.getEntry(user.id, id);
   }
 
-  @Patch('entries/:id')
+  @Patch(ENTRY_ROUTE)
   updateEntry(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
@@ -68,7 +70,7 @@ export class FinanceController {
     return this.financeService.updateEntry(user.id, id, dto);
   }
 
-  @Delete('entries/:id')
+  @Delete(ENTRY_ROUTE)
   @HttpCode(HttpStatus.OK)
   deleteEntry(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.financeService.deleteEntry(user.id, id);
@@ -111,7 +113,7 @@ export class FinanceController {
     return this.financeService.markPerDiemPaid(user.id, id);
   }
 
-  // ─── Reportes ────────────────────────────────────────────────
+  // ─── Reports ──────────────────────────────────────────────────
   @Get('reports')
   getReport(
     @CurrentUser() user: AuthenticatedUser,

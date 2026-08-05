@@ -9,6 +9,9 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { MemberRole } from '@regieart/types';
 import { CreateInstrumentDto, InstrumentType } from './dto/create-instrument.dto';
 import { AssignInstrumentDto } from './dto/assign-instrument.dto';
+import { InstrumentStatus } from '@regieart/database';
+
+const INSTRUMENT_NOT_FOUND = 'Instrument not found';
 
 @Injectable()
 export class InventoryService {
@@ -31,7 +34,7 @@ export class InventoryService {
         orgId,
         isActive: true,
         ...(type   && { type }),
-        ...(status && { status: status as any }),
+        ...(status && { status: status as InstrumentStatus }),
       },
       include: {
         assignments: {
@@ -61,22 +64,22 @@ export class InventoryService {
         },
       },
     });
-    if (!instrument || !instrument.isActive) throw new NotFoundException('Instrument not found');
+    if (!instrument || !instrument.isActive) throw new NotFoundException(INSTRUMENT_NOT_FOUND);
     await this.requireMembership(userId, instrument.orgId);
     return instrument;
   }
 
   async update(userId: string, id: string, dto: Partial<CreateInstrumentDto>) {
     const instrument = await this.prisma.instrument.findUnique({ where: { id } });
-    if (!instrument || !instrument.isActive) throw new NotFoundException('Instrument not found');
+    if (!instrument || !instrument.isActive) throw new NotFoundException(INSTRUMENT_NOT_FOUND);
     await this.requireAdminOrOwner(userId, instrument.orgId);
-    const { orgId, ...data } = dto;
+    const { orgId: _orgId, ...data } = dto;
     return this.prisma.instrument.update({ where: { id }, data });
   }
 
   async retire(userId: string, id: string) {
     const instrument = await this.prisma.instrument.findUnique({ where: { id } });
-    if (!instrument) throw new NotFoundException('Instrument not found');
+    if (!instrument) throw new NotFoundException(INSTRUMENT_NOT_FOUND);
     await this.requireAdminOrOwner(userId, instrument.orgId);
     return this.prisma.instrument.update({
       where: { id },
@@ -86,7 +89,7 @@ export class InventoryService {
 
   async assign(adminId: string, instrumentId: string, dto: AssignInstrumentDto) {
     const instrument = await this.prisma.instrument.findUnique({ where: { id: instrumentId } });
-    if (!instrument || !instrument.isActive) throw new NotFoundException('Instrument not found');
+    if (!instrument || !instrument.isActive) throw new NotFoundException(INSTRUMENT_NOT_FOUND);
     await this.requireAdminOrOwner(adminId, instrument.orgId);
 
     if (instrument.status === 'IN_USE') throw new ConflictException('Instrument is already in use');
@@ -124,7 +127,7 @@ export class InventoryService {
 
   async returnInstrument(adminId: string, instrumentId: string) {
     const instrument = await this.prisma.instrument.findUnique({ where: { id: instrumentId } });
-    if (!instrument) throw new NotFoundException('Instrument not found');
+    if (!instrument) throw new NotFoundException(INSTRUMENT_NOT_FOUND);
     await this.requireAdminOrOwner(adminId, instrument.orgId);
 
     const activeAssignment = await this.prisma.instrumentAssignment.findFirst({
@@ -151,9 +154,11 @@ export class InventoryService {
   async getAssignments(userId: string, orgId?: string, eventId?: string) {
     if (orgId) await this.requireMembership(userId, orgId);
 
-    const where: any = { returnedAt: null };
-    if (eventId) where.eventId = eventId;
-    if (orgId)   where.instrument = { orgId };
+    const where = {
+      returnedAt: null,
+      ...(eventId && { eventId }),
+      ...(orgId   && { instrument: { orgId } }),
+    };
 
     return this.prisma.instrumentAssignment.findMany({
       where,

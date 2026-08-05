@@ -1,27 +1,27 @@
 // ============================================================
-// StorageController — Capa de transporte HTTP del StorageModule.
+// StorageController — HTTP transport layer for the StorageModule.
 //
-// Todos los endpoints requieren autenticación JWT (JwtAuthGuard a nivel clase).
+// All endpoints require JWT authentication (JwtAuthGuard at class level).
 //
-// Endpoints implementados:
-//   POST   /storage/presigned-upload          → URL de subida directa a R2
-//   POST   /storage/confirm-upload            → Verificar y confirmar subida
-//   GET    /storage/objects                   → Listar objetos R2 por prefijo
-//   GET    /storage/presigned-download        → URL de descarga temporal
-//   GET    /storage/assets                    → Buscar assets (DB) con filtros
-//   GET    /storage/assets/:id                → Obtener un asset por ID
-//   PATCH  /storage/assets/:id                → Actualizar metadatos de un asset
-//   DELETE /storage/assets/:id                → Soft-delete + purga futura de R2
-//   POST   /storage/multipart/initiate        → Iniciar subida multiparte (> 50 MB)
-//   POST   /storage/multipart/complete        → Finalizar subida multiparte
-//   DELETE /storage/multipart/abort           → Cancelar subida multiparte
+// Implemented endpoints:
+//   POST   /storage/presigned-upload          → Direct upload URL to R2
+//   POST   /storage/confirm-upload            → Verify and confirm upload
+//   GET    /storage/objects                   → List R2 objects by prefix
+//   GET    /storage/presigned-download        → Temporary download URL
+//   GET    /storage/assets                    → Search assets (DB) with filters
+//   GET    /storage/assets/:id                → Get an asset by ID
+//   PATCH  /storage/assets/:id                → Update asset metadata
+//   DELETE /storage/assets/:id                → Soft-delete + future R2 purge
+//   POST   /storage/multipart/initiate        → Initiate multipart upload (> 50 MB)
+//   POST   /storage/multipart/complete        → Finalize multipart upload
+//   DELETE /storage/multipart/abort           → Cancel multipart upload
 //
-// Seguridad en capas:
-//   Capa 1 — JwtAuthGuard: rechaza peticiones sin token Keycloak válido.
-//   Capa 2 — @CurrentUser: extrae userId del JWT (no del body).
-//   Capa 3 — ValidationPipe (global): valida y sanitiza todos los DTOs.
-//   Capa 4 — StorageService: valida política de MIME, tamaño y membresía.
-//   Capa 5 — Cloudflare R2: rechaza el PUT si el Content-Length no coincide.
+// Layered security:
+//   Layer 1 — JwtAuthGuard: rejects requests without a valid Keycloak token.
+//   Layer 2 — @CurrentUser: extracts userId from the JWT (not from the body).
+//   Layer 3 — ValidationPipe (global): validates and sanitizes all DTOs.
+//   Layer 4 — StorageService: validates MIME policy, size, and membership.
+//   Layer 5 — Cloudflare R2: rejects the PUT if Content-Length does not match.
 // ============================================================
 
 import {
@@ -50,18 +50,20 @@ import { SearchAssetsDto } from './dto/search-assets.dto';
 import { InitiateMultipartDto, CompleteMultipartDto, AbortMultipartDto } from './dto/multipart.dto';
 import { PresignedUploadResponse, StorageService } from './storage.service';
 
+const ASSET_ROUTE = 'assets/:id';
+
 @UseGuards(JwtAuthGuard)
 @Controller('storage')
 export class StorageController {
   constructor(private readonly storageService: StorageService) {}
 
   // ═══════════════════════════════════════════════════════════
-  // SUBIDA DE ARCHIVOS
+  // FILE UPLOAD
   // ═══════════════════════════════════════════════════════════
 
-  // ── POST /storage/presigned-upload ──────────────────────────
-  // Genera URL pre-firmada de subida y crea el registro Asset PENDING en DB.
-  // Throttle estricto: la generación de URLs involucra criptografía + DB + Redis.
+  // ── POST /storage/presigned-upload ────────────────────────────
+  // Generates a pre-signed upload URL and creates a PENDING Asset record in DB.
+  // Strict throttle: URL generation involves cryptography + DB + Redis.
   @Throttle({ default: { ttl: 60000, limit: 10 } })
   @Post('presigned-upload')
   @HttpCode(HttpStatus.OK)
@@ -73,8 +75,8 @@ export class StorageController {
   }
 
   // ── POST /storage/confirm-upload ────────────────────────────
-  // Verifica existencia en R2 vía HeadObject y actualiza el Asset a CONFIRMED.
-  // También acepta metadatos técnicos opcionales (duración, dimensiones, etc.).
+  // Verifies existence in R2 via HeadObject and updates the Asset to CONFIRMED.
+  // Also accepts optional technical metadata (duration, dimensions, etc.).
   @Post('confirm-upload')
   @HttpCode(HttpStatus.OK)
   async confirmUpload(
@@ -85,19 +87,19 @@ export class StorageController {
   }
 
   // ═══════════════════════════════════════════════════════════
-  // DESCARGA Y LISTADO
+  // DOWNLOAD AND LISTING
   // ═══════════════════════════════════════════════════════════
 
-  // ── GET /storage/presigned-download?key=... ─────────────────
-  // Genera URL pre-firmada de lectura (5 min). La URL se cachea en Redis 4 min.
-  // El ownership check se hace en StoragePresignedService.generateDownloadUrl().
+  // ── GET /storage/presigned-download?key=... ─────────────────────
+  // Generates a pre-signed read URL (5 min). The URL is cached in Redis for 4 min.
+  // Ownership check is performed in StoragePresignedService.generateDownloadUrl().
   @Get('presigned-download')
   async requestDownloadUrl(
     @CurrentUser() user: AuthenticatedUser,
     @Query('key') key: string,
   ) {
     if (!key) {
-      throw new UnauthorizedException('Se requiere el parámetro key.');
+      throw new UnauthorizedException('The key parameter is required.');
     }
 
     const downloadUrl = await this.storageService.generateDownloadPresignedUrl(user.id, key);
@@ -105,8 +107,8 @@ export class StorageController {
   }
 
   // ── GET /storage/objects?prefix=... ─────────────────────────
-  // Lista objetos en R2 por prefijo (consulta directa a R2, sin DB).
-  // Para búsqueda completa con metadatos, usar GET /storage/assets.
+  // Lists R2 objects by prefix (direct R2 query, no DB).
+  // For full search with metadata, use GET /storage/assets.
   @Get('objects')
   listObjects(
     @CurrentUser() user: AuthenticatedUser,
@@ -116,12 +118,12 @@ export class StorageController {
   }
 
   // ═══════════════════════════════════════════════════════════
-  // GESTIÓN DE ASSETS (METADATA EN DB)
+  // ASSET MANAGEMENT (DB METADATA)
   // ═══════════════════════════════════════════════════════════
 
-  // ── GET /storage/assets?q=...&assetType=...&orgId=... ───────
-  // Búsqueda de assets con filtros. Incluye paginación y ordenamiento.
-  // Solo devuelve assets del usuario o de sus organizaciones (seguridad).
+  // ── GET /storage/assets?q=...&assetType=...&orgId=... ──────────────
+  // Search assets with filters. Includes pagination and sorting.
+  // Only returns assets belonging to the user or their organizations (security).
   @Get('assets')
   async searchAssets(
     @CurrentUser() user: AuthenticatedUser,
@@ -131,22 +133,22 @@ export class StorageController {
   }
 
   // ── GET /storage/assets/:id ──────────────────────────────────
-  // Obtiene un asset por su ID interno. Verifica que el usuario tenga acceso.
-  @Get('assets/:id')
+  // Gets an asset by its internal ID. Verifies that the user has access.
+  @Get(ASSET_ROUTE)
   async getAsset(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
   ) {
     const asset = await this.storageService.getAsset(id);
-    if (!asset) throw new NotFoundException(`Asset "${id}" no encontrado.`);
+    if (!asset) throw new NotFoundException(`Asset "${id}" not found.`);
 
-    // Verificar acceso: el uploader siempre puede acceder;
-    // para activos de org, verificar membresía
+    // Check access: the uploader can always access their own assets;
+    // for org assets, verify membership
     if (asset.uploadedById !== user.id) {
       if (asset.orgId) {
         await this.storageService.assertOrgMembership(user.id, asset.orgId);
       } else {
-        throw new UnauthorizedException('No tienes acceso a este archivo.');
+        throw new UnauthorizedException('You do not have access to this file.');
       }
     }
 
@@ -154,9 +156,9 @@ export class StorageController {
   }
 
   // ── GET /storage/assets/:id/download ────────────────────────
-  // Obtiene URL de descarga firmada usando solo el ID del asset.
-  // El cliente nunca necesita conocer la key interna de R2.
-  // Incluye ownership check + fast path CDN si el asset es público.
+  // Returns a signed download URL using only the asset ID.
+  // The client never needs to know the internal R2 key.
+  // Includes ownership check + CDN fast path if the asset is public.
   @Get('assets/:id/download')
   async getAssetDownloadUrl(
     @CurrentUser() user: AuthenticatedUser,
@@ -167,9 +169,9 @@ export class StorageController {
   }
 
   // ── PATCH /storage/assets/:id ────────────────────────────────
-  // Actualiza metadatos de un asset: displayName, tags, description, language, isPublic.
-  // No permite cambiar key, assetType, sizeBytes ni status.
-  @Patch('assets/:id')
+  // Updates asset metadata: displayName, tags, description, language, isPublic.
+  // Changing key, assetType, sizeBytes or status is not allowed.
+  @Patch(ASSET_ROUTE)
   async updateAsset(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
@@ -179,9 +181,9 @@ export class StorageController {
   }
 
   // ── DELETE /storage/assets/:id ───────────────────────────────
-  // Soft-delete en DB (status=DELETED) + hard-delete inmediato en R2.
-  // La fila de DB se limpia después por el StorageCleanupService.
-  @Delete('assets/:id')
+  // Soft-delete in DB (status=DELETED) + immediate hard-delete in R2.
+  // The DB row is later cleaned up by StorageCleanupService.
+  @Delete(ASSET_ROUTE)
   @HttpCode(HttpStatus.OK)
   async deleteAsset(
     @CurrentUser() user: AuthenticatedUser,
@@ -195,8 +197,8 @@ export class StorageController {
   // ═══════════════════════════════════════════════════════════
 
   // ── POST /storage/multipart/initiate ────────────────────────
-  // Inicia una subida multiparte y devuelve las URLs pre-firmadas de cada parte.
-  // El cliente sube las partes en paralelo y luego llama a /complete.
+  // Initiates a multipart upload and returns the pre-signed URLs for each part.
+  // The client uploads parts in parallel and then calls /complete.
   @Throttle({ default: { ttl: 60000, limit: 5 } })
   @Post('multipart/initiate')
   @HttpCode(HttpStatus.OK)
@@ -208,8 +210,8 @@ export class StorageController {
   }
 
   // ── POST /storage/multipart/complete ────────────────────────
-  // Envía la lista de partes completadas para que R2 ensamble el objeto final.
-  // Llamar solo después de que TODAS las partes hayan sido subidas.
+  // Sends the completed parts list for R2 to assemble the final object.
+  // Call only after ALL parts have been uploaded.
   @Post('multipart/complete')
   @HttpCode(HttpStatus.OK)
   async completeMultipart(
@@ -220,8 +222,8 @@ export class StorageController {
   }
 
   // ── DELETE /storage/multipart/abort ─────────────────────────
-  // Cancela una subida multiparte en curso y libera las partes ya subidas en R2.
-  // Llamar si el usuario cancela la subida o si ocurre un error irrecuperable.
+  // Cancels an in-progress multipart upload and releases the already-uploaded parts in R2.
+  // Call if the user cancels the upload or an unrecoverable error occurs.
   @Delete('multipart/abort')
   @HttpCode(HttpStatus.OK)
   async abortMultipart(

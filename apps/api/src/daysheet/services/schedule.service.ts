@@ -46,12 +46,16 @@ export class ScheduleService {
 
     await this.getItemOrFail(itemId, eventId);
 
-    const data: any = { ...dto };
-    if (dto.startTime) data.startTime = new Date(dto.startTime);
-    if (dto.endTime)   data.endTime   = new Date(dto.endTime);
-    // Si se marca como completado ahora, registrar timestamp
-    if (dto.isCompleted === true)  data.completedAt = new Date();
-    if (dto.isCompleted === false) data.completedAt = null;
+    const { startTime: startTimeStr, endTime: endTimeStr, isCompleted, ...dtoRest } = dto;
+    const data = {
+      ...dtoRest,
+      ...(startTimeStr && { startTime: new Date(startTimeStr) }),
+      ...(endTimeStr   && { endTime:   new Date(endTimeStr) }),
+      ...(isCompleted  !== undefined && { isCompleted }),
+      // Si se marca como completado ahora, registrar timestamp
+      ...(isCompleted  === true      && { completedAt: new Date() }),
+      ...(isCompleted  === false     && { completedAt: null }),
+    };
 
     return this.prisma.eventScheduleItem.update({ where: { id: itemId }, data });
   }

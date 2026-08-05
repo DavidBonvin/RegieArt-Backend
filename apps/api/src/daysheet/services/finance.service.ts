@@ -11,31 +11,30 @@ import { UpsertEventFinanceDto } from '../dto/upsert-event-finance.dto';
 export class FinanceService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getFinance(userId: string, eventId: string): Promise<any> {
+  async getFinance(userId: string, eventId: string) {
     const event = await this.getEventOrFail(eventId);
     await this.requireMembership(userId, event.orgId);
 
-    const finance = await this.prisma.eventFinance.findUnique({
+    // Returns null if not yet created
+    return this.prisma.eventFinance.findUnique({
       where: { eventId },
     });
-    // Devuelve null si aún no se ha creado
-    return finance;
   }
 
-  async upsertFinance(userId: string, eventId: string, dto: UpsertEventFinanceDto): Promise<any> {
+  async upsertFinance(userId: string, eventId: string, dto: UpsertEventFinanceDto) {
     const event = await this.getEventOrFail(eventId);
     await this.requireAdminOrOwner(userId, event.orgId);
 
-    const data: any = {};
-    if (dto.cacheTotal     !== undefined) data.cacheTotal     = dto.cacheTotal;
-    if (dto.perDiemAmount  !== undefined) data.perDiemAmount  = dto.perDiemAmount;
-    if (dto.currency       !== undefined) data.currency       = dto.currency;
-    if (dto.paymentNotes   !== undefined) data.paymentNotes   = dto.paymentNotes;
-    if (dto.invoiceAssetId !== undefined) data.invoiceAssetId = dto.invoiceAssetId;
-
-    // Cuando se marca como pagado, registrar el timestamp
-    if (dto.isPaid === true)  { data.isPaid = true;  data.paidAt = new Date(); }
-    if (dto.isPaid === false) { data.isPaid = false; data.paidAt = null; }
+    const data = {
+      ...(dto.cacheTotal     !== undefined && { cacheTotal:     dto.cacheTotal }),
+      ...(dto.perDiemAmount  !== undefined && { perDiemAmount:  dto.perDiemAmount }),
+      ...(dto.currency       !== undefined && { currency:       dto.currency }),
+      ...(dto.paymentNotes   !== undefined && { paymentNotes:   dto.paymentNotes }),
+      ...(dto.invoiceAssetId !== undefined && { invoiceAssetId: dto.invoiceAssetId }),
+      // Cuando se marca como pagado, registrar el timestamp
+      ...(dto.isPaid === true  && { isPaid: true,  paidAt: new Date() }),
+      ...(dto.isPaid === false && { isPaid: false, paidAt: null }),
+    };
 
     return this.prisma.eventFinance.upsert({
       where:  { eventId },

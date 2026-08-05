@@ -12,7 +12,7 @@
 // (ej. un reproductor de audio que sabe la duración antes de subir).
 // ============================================================
 
-import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
 import { AssetType } from '../constants/upload-policies';
 
 export class ConfirmUploadDto {

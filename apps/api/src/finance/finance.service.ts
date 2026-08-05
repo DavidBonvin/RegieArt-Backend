@@ -13,6 +13,8 @@ import { UpdateFinanceEntryDto } from './dto/update-finance-entry.dto';
 import { CreatePerDiemDto } from './dto/create-per-diem.dto';
 import { QueryFinanceDto } from './dto/query-finance.dto';
 
+const ENTRY_NOT_FOUND = 'Entry not found';
+
 @Injectable()
 export class FinanceService {
   constructor(
@@ -20,9 +22,9 @@ export class FinanceService {
     private readonly notifications: NotificationsService,
   ) {}
 
-  // ─── Categorías ──────────────────────────────────────────────
+  // ─── Categories ──────────────────────────────────────────────
 
-  async createCategory(userId: string, dto: CreateFinanceCategoryDto): Promise<any> {
+  async createCategory(userId: string, dto: CreateFinanceCategoryDto) {
     await this.requireAdminOrOwner(userId, dto.orgId);
     const exists = await this.prisma.financeCategory.findFirst({
       where: { orgId: dto.orgId, name: dto.name, type: dto.type },
@@ -31,7 +33,7 @@ export class FinanceService {
     return this.prisma.financeCategory.create({ data: dto });
   }
 
-  async getCategories(userId: string, orgId: string): Promise<any> {
+  async getCategories(userId: string, orgId: string) {
     await this.requireMembership(userId, orgId);
     return this.prisma.financeCategory.findMany({
       where: { orgId },
@@ -39,7 +41,7 @@ export class FinanceService {
     });
   }
 
-  async deleteCategory(userId: string, id: string): Promise<any> {
+  async deleteCategory(userId: string, id: string) {
     const cat = await this.prisma.financeCategory.findUnique({ where: { id } });
     if (!cat) throw new NotFoundException('Category not found');
     await this.requireAdminOrOwner(userId, cat.orgId);
@@ -47,9 +49,9 @@ export class FinanceService {
     return { message: 'Category deleted' };
   }
 
-  // ─── Entradas (Gastos / Ingresos) ────────────────────────────
+  // ─── Entries (Expenses / Income) ────────────────────────────
 
-  async createEntry(userId: string, dto: CreateFinanceEntryDto): Promise<any> {
+  async createEntry(userId: string, dto: CreateFinanceEntryDto) {
     await this.requireMembership(userId, dto.orgId);
     return this.prisma.financeEntry.create({
       data: {
@@ -68,11 +70,11 @@ export class FinanceService {
     });
   }
 
-  async getEntries(userId: string, query: QueryFinanceDto): Promise<any> {
+  async getEntries(userId: string, query: QueryFinanceDto) {
     const { orgId, eventId, type, status, from, to, page = 1, limit = 20 } = query;
     if (orgId) await this.requireMembership(userId, orgId);
 
-    const where: any = {
+    const where = {
       ...(orgId   && { orgId }),
       ...(eventId && { eventId }),
       ...(type    && { type }),
@@ -98,7 +100,7 @@ export class FinanceService {
     return { entries, total, page, limit };
   }
 
-  async getEntry(userId: string, id: string): Promise<any> {
+  async getEntry(userId: string, id: string) {
     const entry = await this.prisma.financeEntry.findUnique({
       where: { id },
       include: {
@@ -108,33 +110,36 @@ export class FinanceService {
         event:      { select: { id: true, title: true } },
       },
     });
-    if (!entry) throw new NotFoundException('Entry not found');
+    if (!entry) throw new NotFoundException(ENTRY_NOT_FOUND);
     await this.requireMembership(userId, entry.orgId);
     return entry;
   }
 
-  async updateEntry(userId: string, id: string, dto: UpdateFinanceEntryDto): Promise<any> {
+  async updateEntry(userId: string, id: string, dto: UpdateFinanceEntryDto) {
     const entry = await this.prisma.financeEntry.findUnique({ where: { id } });
-    if (!entry) throw new NotFoundException('Entry not found');
+    if (!entry) throw new NotFoundException(ENTRY_NOT_FOUND);
     if (entry.createdById !== userId) {
       await this.requireAdminOrOwner(userId, entry.orgId);
     }
-    const data: any = { ...dto };
-    if (dto.date) data.date = new Date(dto.date);
+    const { date: dateStr, ...dtoRest } = dto;
+    const data = {
+      ...dtoRest,
+      ...(dateStr && { date: new Date(dateStr) }),
+    };
     return this.prisma.financeEntry.update({ where: { id }, data });
   }
 
-  async deleteEntry(userId: string, id: string): Promise<any> {
+  async deleteEntry(userId: string, id: string) {
     const entry = await this.prisma.financeEntry.findUnique({ where: { id } });
-    if (!entry) throw new NotFoundException('Entry not found');
+    if (!entry) throw new NotFoundException(ENTRY_NOT_FOUND);
     if (entry.createdById !== userId) await this.requireAdminOrOwner(userId, entry.orgId);
     await this.prisma.financeEntry.delete({ where: { id } });
     return { message: 'Entry deleted' };
   }
 
-  async approveEntry(approverId: string, id: string): Promise<any> {
+  async approveEntry(approverId: string, id: string) {
     const entry = await this.prisma.financeEntry.findUnique({ where: { id } });
-    if (!entry) throw new NotFoundException('Entry not found');
+    if (!entry) throw new NotFoundException(ENTRY_NOT_FOUND);
     await this.requireAdminOrOwner(approverId, entry.orgId);
 
     const approver = await this.prisma.user.findUnique({
@@ -158,9 +163,9 @@ export class FinanceService {
     return updated;
   }
 
-  async rejectEntry(approverId: string, id: string, reason?: string): Promise<any> {
+  async rejectEntry(approverId: string, id: string, reason?: string) {
     const entry = await this.prisma.financeEntry.findUnique({ where: { id } });
-    if (!entry) throw new NotFoundException('Entry not found');
+    if (!entry) throw new NotFoundException(ENTRY_NOT_FOUND);
     await this.requireAdminOrOwner(approverId, entry.orgId);
 
     const approver = await this.prisma.user.findUnique({
@@ -186,7 +191,7 @@ export class FinanceService {
 
   // ─── Per Diem ────────────────────────────────────────────────
 
-  async createPerDiem(userId: string, dto: CreatePerDiemDto): Promise<any> {
+  async createPerDiem(userId: string, dto: CreatePerDiemDto) {
     await this.requireAdminOrOwner(userId, dto.orgId);
     return this.prisma.perDiemPayout.create({
       data: {
@@ -202,7 +207,7 @@ export class FinanceService {
     });
   }
 
-  async getPerDiems(userId: string, orgId: string, eventId?: string): Promise<any> {
+  async getPerDiems(userId: string, orgId: string, eventId?: string) {
     await this.requireMembership(userId, orgId);
     return this.prisma.perDiemPayout.findMany({
       where: { orgId, ...(eventId && { eventId }) },
@@ -211,7 +216,7 @@ export class FinanceService {
     });
   }
 
-  async markPerDiemPaid(adminId: string, id: string): Promise<any> {
+  async markPerDiemPaid(adminId: string, id: string) {
     const pd = await this.prisma.perDiemPayout.findUnique({ where: { id } });
     if (!pd) throw new NotFoundException('Per diem not found');
     await this.requireAdminOrOwner(adminId, pd.orgId);
@@ -221,14 +226,14 @@ export class FinanceService {
     });
   }
 
-  // ─── Reportes ────────────────────────────────────────────────
+  // ─── Reports ────────────────────────────────────────────────
 
-  async getReport(userId: string, orgId: string, from?: string, to?: string): Promise<any> {
+  async getReport(userId: string, orgId: string, from?: string, to?: string) {
     await this.requireMembership(userId, orgId);
 
-    const where: any = {
+    const where = {
       orgId,
-      status: 'APPROVED',
+      status: 'APPROVED' as const,
       ...(from || to ? { date: { ...(from && { gte: new Date(from) }), ...(to && { lte: new Date(to) }) } } : {}),
     };
 
@@ -239,7 +244,8 @@ export class FinanceService {
 
     let totalIncome = 0;
     let totalExpense = 0;
-    const byCategory: Record<string, any> = {};
+    type CategoryReport = { name: string; type: string; total: number; count: number };
+    const byCategory: Record<string, CategoryReport> = {};
 
     for (const e of entries) {
       const amt = parseFloat(e.amount.toString());
@@ -259,13 +265,13 @@ export class FinanceService {
         totalExpense: +totalExpense.toFixed(2),
         balance: +(totalIncome - totalExpense).toFixed(2),
       },
-      byCategory: Object.values(byCategory).sort((a: any, b: any) => b.total - a.total),
+      byCategory: Object.values(byCategory).sort((a, b) => b.total - a.total),
     };
   }
 
   // ─── Helpers ─────────────────────────────────────────────────
 
-  private async requireMembership(userId: string, orgId: string): Promise<any> {
+  private async requireMembership(userId: string, orgId: string) {
     const m = await this.prisma.organizationMember.findUnique({
       where: { userId_organizationId: { userId, organizationId: orgId } },
     });
@@ -273,7 +279,7 @@ export class FinanceService {
     return m;
   }
 
-  private async requireAdminOrOwner(userId: string, orgId: string): Promise<any> {
+  private async requireAdminOrOwner(userId: string, orgId: string) {
     const m = await this.requireMembership(userId, orgId);
     if (m.role !== MemberRole.OWNER && m.role !== MemberRole.ADMIN) {
       throw new ForbiddenException('Admin or Owner role required');

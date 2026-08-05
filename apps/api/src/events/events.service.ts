@@ -15,6 +15,8 @@ import { UpdateVenueDto } from './dto/update-venue.dto';
 import { MemberRole } from '@regieart/types';
 import { NotificationsService } from '../notifications/notifications.service';
 
+const EVENT_NOT_FOUND = 'Event not found';
+
 @Injectable()
 export class EventsService {
   constructor(
@@ -80,7 +82,7 @@ export class EventsService {
 
     if (orgId) await this.requireMembership(userId, orgId);
 
-    const where: any = {
+    const where = {
       deletedAt: null,
       ...(orgId && { orgId }),
       ...(type && { type }),
@@ -144,26 +146,29 @@ export class EventsService {
       },
     });
 
-    if (!event) throw new NotFoundException('Event not found');
+    if (!event) throw new NotFoundException(EVENT_NOT_FOUND);
     await this.requireMembership(userId, event.orgId);
     return event;
   }
 
   async update(userId: string, id: string, dto: UpdateEventDto) {
     const event = await this.prisma.event.findFirst({ where: { id, deletedAt: null } });
-    if (!event) throw new NotFoundException('Event not found');
+    if (!event) throw new NotFoundException(EVENT_NOT_FOUND);
     await this.requireAdminOrOwner(userId, event.orgId);
 
-    const data: any = { ...dto };
-    if (dto.startTime) data.startTime = new Date(dto.startTime);
-    if (dto.endTime) data.endTime = new Date(dto.endTime);
+    const { startTime: startTimeStr, endTime: endTimeStr, ...dtoRest } = dto;
+    const data = {
+      ...dtoRest,
+      ...(startTimeStr && { startTime: new Date(startTimeStr) }),
+      ...(endTimeStr   && { endTime:   new Date(endTimeStr) }),
+    };
 
     return this.prisma.event.update({ where: { id }, data, include: { venue: true } });
   }
 
   async updateDaysheet(userId: string, id: string, dto: UpdateDaysheetDto) {
     const event = await this.prisma.event.findFirst({ where: { id, deletedAt: null } });
-    if (!event) throw new NotFoundException('Event not found');
+    if (!event) throw new NotFoundException(EVENT_NOT_FOUND);
     await this.requireAdminOrOwner(userId, event.orgId);
 
     return this.prisma.event.update({
@@ -178,7 +183,7 @@ export class EventsService {
 
   async remove(userId: string, id: string) {
     const event = await this.prisma.event.findFirst({ where: { id, deletedAt: null } });
-    if (!event) throw new NotFoundException('Event not found');
+    if (!event) throw new NotFoundException(EVENT_NOT_FOUND);
     await this.requireAdminOrOwner(userId, event.orgId);
 
     await this.prisma.event.update({ where: { id }, data: { deletedAt: new Date(), status: 'CANCELLED' } });
@@ -189,7 +194,7 @@ export class EventsService {
 
   async getRoster(userId: string, eventId: string) {
     const event = await this.prisma.event.findFirst({ where: { id: eventId, deletedAt: null } });
-    if (!event) throw new NotFoundException('Event not found');
+    if (!event) throw new NotFoundException(EVENT_NOT_FOUND);
     await this.requireMembership(userId, event.orgId);
 
     return this.prisma.eventRoster.findMany({
@@ -212,7 +217,7 @@ export class EventsService {
 
   async addRosterMember(userId: string, eventId: string, dto: AddRosterMemberDto) {
     const event = await this.prisma.event.findFirst({ where: { id: eventId, deletedAt: null } });
-    if (!event) throw new NotFoundException('Event not found');
+    if (!event) throw new NotFoundException(EVENT_NOT_FOUND);
     await this.requireAdminOrOwner(userId, event.orgId);
 
     // Verify target user exists and is a member of the org
@@ -257,7 +262,7 @@ export class EventsService {
     dto: UpdateRosterMemberDto,
   ) {
     const event = await this.prisma.event.findFirst({ where: { id: eventId, deletedAt: null } });
-    if (!event) throw new NotFoundException('Event not found');
+    if (!event) throw new NotFoundException(EVENT_NOT_FOUND);
 
     // The member can update their own status; admins can update role/notes
     const isAdminOrOwner = await this.isAdminOrOwner(userId, event.orgId);
@@ -286,7 +291,7 @@ export class EventsService {
 
   async removeRosterMember(userId: string, eventId: string, targetUserId: string) {
     const event = await this.prisma.event.findFirst({ where: { id: eventId, deletedAt: null } });
-    if (!event) throw new NotFoundException('Event not found');
+    if (!event) throw new NotFoundException(EVENT_NOT_FOUND);
     await this.requireAdminOrOwner(userId, event.orgId);
 
     const entry = await this.prisma.eventRoster.findUnique({

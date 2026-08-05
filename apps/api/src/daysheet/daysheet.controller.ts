@@ -27,7 +27,7 @@ export class DaysheetController {
   getMasterDaysheet(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
-  ): Promise<any> {
+  ) {
     return this.daysheetService.getMasterDaysheet(user.id, id);
   }
 

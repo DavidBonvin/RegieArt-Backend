@@ -23,7 +23,7 @@ export class DaysheetService {
     private readonly weather: WeatherService,
   ) {}
 
-  async getMasterDaysheet(userId: string, eventId: string): Promise<any> {
+  async getMasterDaysheet(userId: string, eventId: string) {
     // 1. Evento + venue
     const event = await this.prisma.event.findFirst({
       where: { id: eventId, deletedAt: null },

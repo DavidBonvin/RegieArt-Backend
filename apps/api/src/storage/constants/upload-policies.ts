@@ -1,18 +1,23 @@
 // ============================================================
-// Políticas de subida de archivos para el StorageModule.
-// Define los tipos de activo permitidos, sus MIME Types válidos,
-// el tamaño máximo en bytes y la función que construye la ruta
-// dentro del bucket de Cloudflare R2.
+// File upload policies for the StorageModule.
+// Defines the allowed asset types, valid MIME types,
+// the maximum size in bytes, and the function that builds the path
+// within the Cloudflare R2 bucket.
 //
-// Principio Multi-tenant: cada ruta está aislada por UUID
-// (userId u orgId), lo que impide que un tenant acceda a
-// los archivos de otro incluso si conoce la clave S3.
+// Multi-tenant principle: each path is isolated by UUID
+// (userId or orgId), preventing one tenant from accessing
+// another tenant's files even if they know the S3 key.
 // ============================================================
 
-// ─── Constante de conveniencia para legibilidad ──────────────
+// ─── Convenience constant for readability ──────────────────
 export const MB = 1024 * 1024;
 
-// ─── Enum de tipos de activo soportados por la plataforma ────
+// ─── MIME type constants (prevents duplicate string literals) ───
+const MIME_IMAGE_JPEG = 'image/jpeg';
+const MIME_IMAGE_PNG  = 'image/png';
+const MIME_PDF        = 'application/pdf';
+
+// ─── Enum of asset types supported by the platform ──────────────
 export enum AssetType {
   USER_AVATAR = 'user-avatar',
   USER_BANNER = 'user-banner',
@@ -25,8 +30,8 @@ export enum AssetType {
   LEGAL_DOCUMENT = 'legal-document',
 }
 
-// ─── Parámetros de contexto para construir la ruta S3 ────────
-// El userId siempre viene del JWT; el resto viene del DTO del cliente
+// ─── Context parameters for building the S3 path ────────────
+// userId always comes from the JWT; the rest comes from the client DTO
 export interface PathParams {
   userId: string;
   orgId?: string;
@@ -35,53 +40,53 @@ export interface PathParams {
   fileId?: string;
 }
 
-// ─── Estructura de una política de subida ────────────────────
+// ─── Structure of an upload policy ────────────────────────
 export interface UploadPolicy {
-  // MIME Types que se aceptan para este tipo de activo
+  // MIME types accepted for this asset type
   allowedMimeTypes: string[];
-  // Tamaño máximo del archivo en bytes
+  // Maximum file size in bytes
   maxSizeBytes: number;
-  // Campos del PathParams que son obligatorios para este tipo
+  // PathParams fields that are required for this type
   requiredParams: Array<keyof PathParams>;
-  // Si es true, el backend genera el fileId con crypto.randomUUID()
-  // y lo ignora aunque el cliente lo envíe.
-  // Usar en activos donde la trazabilidad o el versionado es crítico:
-  // recibos financieros, documentos legales, archivos técnicos y videos.
+  // If true, the backend generates the fileId using crypto.randomUUID()
+  // and ignores any fileId the client sends.
+  // Use for assets where traceability or versioning is critical:
+  // financial receipts, legal documents, technical files, and videos.
   serverGeneratesFileId?: boolean;
-  // Función pura que construye la clave S3 a partir del contexto
+  // Pure function that builds the S3 key from the context
   buildKey: (params: PathParams) => string;
 }
 
-// ─── Mapa central de políticas, indexado por AssetType ───────
-// Este es el "contrato" de seguridad del sistema de almacenamiento.
-// Modificar aquí afecta a todo el módulo de forma centralizada.
+// ─── Central policy map, indexed by AssetType ───────────────
+// This is the storage system's security "contract".
+// Changes here affect the entire module in a centralized way.
 export const UPLOAD_POLICIES: Record<AssetType, UploadPolicy> = {
 
-  // Foto de perfil del usuario autenticado
+  // Profile photo of the authenticated user
   [AssetType.USER_AVATAR]: {
-    allowedMimeTypes: ['image/jpeg', 'image/png'],
+    allowedMimeTypes: [MIME_IMAGE_JPEG, MIME_IMAGE_PNG],
     maxSizeBytes: 2 * MB,
     requiredParams: ['userId'],
     buildKey: ({ userId }) => `profiles/${userId}/avatar.jpg`,
   },
 
-  // Banner de perfil personal del usuario (similar a LinkedIn/Facebook)
+  // Personal profile banner of the user (similar to LinkedIn/Facebook)
   [AssetType.USER_BANNER]: {
-    allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+    allowedMimeTypes: [MIME_IMAGE_JPEG, MIME_IMAGE_PNG, 'image/webp'],
     maxSizeBytes: 5 * MB,
     requiredParams: ['userId'],
     buildKey: ({ userId }) => `profiles/${userId}/banner.jpg`,
   },
 
-  // Banner principal de una organización/banda
+  // Main banner for an organization/band
   [AssetType.ORG_BANNER]: {
-    allowedMimeTypes: ['image/jpeg', 'image/png'],
+    allowedMimeTypes: [MIME_IMAGE_JPEG, MIME_IMAGE_PNG],
     maxSizeBytes: 5 * MB,
     requiredParams: ['userId', 'orgId'],
     buildKey: ({ orgId }) => `organizations/${orgId}/banners/main.png`,
   },
 
-  // Pista de audio de un ensayo o canción del repertorio
+  // Audio track from a rehearsal or repertoire song
   [AssetType.AUDIO_TRACK]: {
     allowedMimeTypes: ['audio/mpeg', 'audio/wav', 'audio/ogg'],
     maxSizeBytes: 25 * MB,
@@ -90,18 +95,18 @@ export const UPLOAD_POLICIES: Record<AssetType, UploadPolicy> = {
       `organizations/${orgId}/repertoire/${songId}/audio.mp3`,
   },
 
-  // Partitura en PDF o SVG de una canción del repertorio
+  // Sheet music in PDF or SVG format for a repertoire song
   [AssetType.MUSIC_SCORE]: {
-    allowedMimeTypes: ['application/pdf', 'image/svg+xml'],
+    allowedMimeTypes: [MIME_PDF, 'image/svg+xml'],
     maxSizeBytes: 10 * MB,
     requiredParams: ['userId', 'orgId', 'songId'],
     buildKey: ({ orgId, songId }) =>
       `organizations/${orgId}/repertoire/${songId}/score.pdf`,
   },
 
-  // Ticket o recibo para OCR financiero de un evento
+  // Ticket or receipt for financial OCR of an event
   [AssetType.FINANCIAL_RECEIPT]: {
-    allowedMimeTypes: ['image/jpeg', 'image/png', 'application/pdf'],
+    allowedMimeTypes: [MIME_IMAGE_JPEG, MIME_IMAGE_PNG, MIME_PDF],
     maxSizeBytes: 5 * MB,
     requiredParams: ['userId', 'orgId', 'eventId', 'fileId'],
     serverGeneratesFileId: true,
@@ -109,7 +114,7 @@ export const UPLOAD_POLICIES: Record<AssetType, UploadPolicy> = {
       `organizations/${orgId}/events/${eventId}/receipts/${fileId}.jpg`,
   },
 
-  // Archivo de configuración técnica del show (patch de consola)
+  // Technical show configuration file (console patch)
   [AssetType.TECHNICAL_FILE]: {
     allowedMimeTypes: ['application/xml', 'text/plain', 'application/octet-stream'],
     maxSizeBytes: 8 * MB,
@@ -119,7 +124,7 @@ export const UPLOAD_POLICIES: Record<AssetType, UploadPolicy> = {
       `organizations/${orgId}/events/${eventId}/technical/${fileId}.patch`,
   },
 
-  // Video corto de referencia coreográfica o lumínica del escenario
+  // Short reference video for stage choreography or lighting
   [AssetType.REFERENCE_VIDEO]: {
     allowedMimeTypes: ['video/mp4', 'video/quicktime'],
     maxSizeBytes: 300 * MB,
@@ -129,9 +134,9 @@ export const UPLOAD_POLICIES: Record<AssetType, UploadPolicy> = {
       `organizations/${orgId}/events/${eventId}/videos/${fileId}.mp4`,
   },
 
-  // Documento legal (DNI, pasaporte, contrato) para RRHH
+  // Legal document (ID, passport, contract) for HR
   [AssetType.LEGAL_DOCUMENT]: {
-    allowedMimeTypes: ['application/pdf', 'image/jpeg'],
+    allowedMimeTypes: [MIME_PDF, MIME_IMAGE_JPEG],
     maxSizeBytes: 10 * MB,
     requiredParams: ['userId', 'orgId', 'fileId'],
     serverGeneratesFileId: true,

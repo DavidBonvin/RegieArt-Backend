@@ -104,7 +104,8 @@ export class StorageObjectService {
     if (dto.assetType === AssetType.USER_AVATAR || dto.assetType === AssetType.USER_BANNER) {
       const cdnKey = dto.assetType === AssetType.USER_AVATAR ? 'avatarUrl' : 'bannerUrl';
       // Build the public key path — R2 key without signed parameters
-      const publicPath = `${process.env['STORAGE_CDN_URL'] ?? `https://${process.env['STORAGE_BUCKET_NAME']}.r2.cloudflarestorage.com`}/${dto.key}`;
+      const cdnBase = process.env['STORAGE_CDN_URL'] ?? `https://${process.env['STORAGE_BUCKET_NAME']}.r2.cloudflarestorage.com`;
+      const publicPath = `${cdnBase}/${dto.key}`;
       await this.prisma.user.update({
         where: { id: userId },
         data: { [cdnKey]: publicPath },

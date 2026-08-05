@@ -77,24 +77,19 @@ export class SkillsService {
     const { skill, city, orgId, q, page = 1, limit = 20 } = query;
     const skip = (page - 1) * limit;
 
-    const where: any = { isActive: true };
-
-    if (city) where.city = { contains: city, mode: 'insensitive' };
-    if (q)    where.displayName = { contains: q, mode: 'insensitive' };
-
-    if (skill) {
-      where.skills = {
-        some: {
-          skillCategory: {
-            name: { contains: skill, mode: 'insensitive' },
+    const where = {
+      isActive: true,
+      ...(city  && { city:        { contains: city, mode: 'insensitive' as const } }),
+      ...(q     && { displayName: { contains: q,    mode: 'insensitive' as const } }),
+      ...(skill && {
+        skills: {
+          some: {
+            skillCategory: { name: { contains: skill, mode: 'insensitive' as const } },
           },
         },
-      };
-    }
-
-    if (orgId) {
-      where.memberships = { some: { organizationId: orgId } };
-    }
+      }),
+      ...(orgId && { memberships: { some: { organizationId: orgId } } }),
+    };
 
     const [users, total] = await this.prisma.$transaction([
       this.prisma.user.findMany({

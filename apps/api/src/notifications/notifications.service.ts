@@ -48,7 +48,7 @@ export class NotificationsService {
 
   async findAll(userId: string, isRead?: boolean, page = 1, limit = 20) {
     const skip = (page - 1) * limit;
-    const where: any = {
+    const where = {
       recipientId: userId,
       ...(isRead !== undefined && { isRead }),
     };

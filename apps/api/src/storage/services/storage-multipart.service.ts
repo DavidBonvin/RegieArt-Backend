@@ -36,8 +36,9 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 import { S3_BUCKET, S3_CLIENT } from '../providers/s3-client.provider';
-import { AssetType, UPLOAD_POLICIES } from '../constants/upload-policies';
+import { UPLOAD_POLICIES } from '../constants/upload-policies';
 import { InitiateMultipartDto, CompleteMultipartDto, AbortMultipartDto } from '../dto/multipart.dto';
+import { CreatePresignedUrlDto } from '../dto/create-presigned-url.dto';
 import { StorageMembershipService } from './storage-membership.service';
 import { StorageAssetService } from './storage-asset.service';
 
@@ -174,7 +175,7 @@ export class StorageMultipartService {
         dto: {
           ...dto,
           fileSizeBytes: dto.fileSizeBytes,
-        } as any,
+        } as unknown as CreatePresignedUrlDto,
       });
       assetId = created.id;
 
@@ -184,7 +185,7 @@ export class StorageMultipartService {
         data: { isMultipart: true, uploadId, partCount: totalParts },
       });
     } catch (e) {
-      this.logger.warn(`No se pudo crear Asset PENDING para multipart key="${key}"`);
+      this.logger.warn(`No se pudo crear Asset PENDING para multipart key="${key}"`, e instanceof Error ? e.message : String(e));
     }
 
     this.logger.log(

@@ -5,9 +5,8 @@
 // Nadie fuera de este módulo conoce los servicios internos.
 // ============================================================
 
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 
-import { AssetType } from './constants/upload-policies';
 import { CreatePresignedUrlDto } from './dto/create-presigned-url.dto';
 import { ConfirmUploadDto } from './dto/confirm-upload.dto';
 import { UpdateAssetDto } from './dto/update-asset.dto';
