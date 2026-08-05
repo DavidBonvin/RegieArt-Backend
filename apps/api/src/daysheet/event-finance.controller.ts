@@ -21,18 +21,20 @@ export class EventFinanceController {
 
   // GET /events/:id/finance — resumen financiero del evento
   @Get(':id/finance')
-  getFinance(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getFinance(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string): Promise<any> {
     return this.financeService.getFinance(user.id, id);
   }
 
   // PUT /events/:id/finance — crear o actualizar (upsert)
   @Put(':id/finance')
   @HttpCode(HttpStatus.OK)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   upsertFinance(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Body() dto: UpsertEventFinanceDto,
-  ) {
+  ): Promise<any> {
     return this.financeService.upsertFinance(user.id, id, dto);
   }
 }

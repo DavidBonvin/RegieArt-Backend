@@ -23,7 +23,8 @@ export class DaysheetService {
     private readonly weather: WeatherService,
   ) {}
 
-  async getMasterDaysheet(userId: string, eventId: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async getMasterDaysheet(userId: string, eventId: string): Promise<any> {
     // 1. Evento + venue
     const event = await this.prisma.event.findFirst({
       where: { id: eventId, deletedAt: null },

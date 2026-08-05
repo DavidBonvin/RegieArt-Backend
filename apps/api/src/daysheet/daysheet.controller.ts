@@ -24,10 +24,11 @@ export class DaysheetController {
   constructor(private readonly daysheetService: DaysheetService) {}
 
   @Get(':id/daysheet')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getMasterDaysheet(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
-  ) {
+  ): Promise<any> {
     return this.daysheetService.getMasterDaysheet(user.id, id);
   }
 

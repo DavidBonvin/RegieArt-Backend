@@ -47,26 +47,30 @@ export class FinanceController {
 
   // ─── Entries ──────────────────────────────────────────────────
   @Post('entries')
-  createEntry(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateFinanceEntryDto) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  createEntry(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateFinanceEntryDto): Promise<any> {
     return this.financeService.createEntry(user.id, dto);
   }
 
   @Get('entries')
-  getEntries(@CurrentUser() user: AuthenticatedUser, @Query() query: QueryFinanceDto) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getEntries(@CurrentUser() user: AuthenticatedUser, @Query() query: QueryFinanceDto): Promise<any> {
     return this.financeService.getEntries(user.id, query);
   }
 
   @Get(ENTRY_ROUTE)
-  getEntry(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getEntry(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string): Promise<any> {
     return this.financeService.getEntry(user.id, id);
   }
 
   @Patch(ENTRY_ROUTE)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   updateEntry(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Body() dto: UpdateFinanceEntryDto,
-  ) {
+  ): Promise<any> {
     return this.financeService.updateEntry(user.id, id, dto);
   }
 
@@ -78,38 +82,43 @@ export class FinanceController {
 
   @Patch('entries/:id/approve')
   @HttpCode(HttpStatus.OK)
-  approveEntry(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  approveEntry(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string): Promise<any> {
     return this.financeService.approveEntry(user.id, id);
   }
 
   @Patch('entries/:id/reject')
   @HttpCode(HttpStatus.OK)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   rejectEntry(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Body('reason') reason?: string,
-  ) {
+  ): Promise<any> {
     return this.financeService.rejectEntry(user.id, id, reason);
   }
 
   // ─── Per Diem ────────────────────────────────────────────────
   @Post('per-diem')
-  createPerDiem(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreatePerDiemDto) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  createPerDiem(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreatePerDiemDto): Promise<any> {
     return this.financeService.createPerDiem(user.id, dto);
   }
 
   @Get('per-diem')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getPerDiems(
     @CurrentUser() user: AuthenticatedUser,
     @Query('orgId') orgId: string,
     @Query('eventId') eventId?: string,
-  ) {
+  ): Promise<any> {
     return this.financeService.getPerDiems(user.id, orgId, eventId);
   }
 
   @Patch('per-diem/:id/mark-paid')
   @HttpCode(HttpStatus.OK)
-  markPerDiemPaid(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  markPerDiemPaid(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string): Promise<any> {
     return this.financeService.markPerDiemPaid(user.id, id);
   }
 

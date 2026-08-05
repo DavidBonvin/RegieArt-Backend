@@ -51,7 +51,8 @@ export class FinanceService {
 
   // ─── Entries (Expenses / Income) ────────────────────────────
 
-  async createEntry(userId: string, dto: CreateFinanceEntryDto) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async createEntry(userId: string, dto: CreateFinanceEntryDto): Promise<any> {
     await this.requireMembership(userId, dto.orgId);
     return this.prisma.financeEntry.create({
       data: {
@@ -70,7 +71,8 @@ export class FinanceService {
     });
   }
 
-  async getEntries(userId: string, query: QueryFinanceDto) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async getEntries(userId: string, query: QueryFinanceDto): Promise<any> {
     const { orgId, eventId, type, status, from, to, page = 1, limit = 20 } = query;
     if (orgId) await this.requireMembership(userId, orgId);
 
@@ -100,7 +102,8 @@ export class FinanceService {
     return { entries, total, page, limit };
   }
 
-  async getEntry(userId: string, id: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async getEntry(userId: string, id: string): Promise<any> {
     const entry = await this.prisma.financeEntry.findUnique({
       where: { id },
       include: {
@@ -115,7 +118,8 @@ export class FinanceService {
     return entry;
   }
 
-  async updateEntry(userId: string, id: string, dto: UpdateFinanceEntryDto) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async updateEntry(userId: string, id: string, dto: UpdateFinanceEntryDto): Promise<any> {
     const entry = await this.prisma.financeEntry.findUnique({ where: { id } });
     if (!entry) throw new NotFoundException(ENTRY_NOT_FOUND);
     if (entry.createdById !== userId) {
@@ -137,7 +141,8 @@ export class FinanceService {
     return { message: 'Entry deleted' };
   }
 
-  async approveEntry(approverId: string, id: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async approveEntry(approverId: string, id: string): Promise<any> {
     const entry = await this.prisma.financeEntry.findUnique({ where: { id } });
     if (!entry) throw new NotFoundException(ENTRY_NOT_FOUND);
     await this.requireAdminOrOwner(approverId, entry.orgId);
@@ -163,7 +168,8 @@ export class FinanceService {
     return updated;
   }
 
-  async rejectEntry(approverId: string, id: string, reason?: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async rejectEntry(approverId: string, id: string, reason?: string): Promise<any> {
     const entry = await this.prisma.financeEntry.findUnique({ where: { id } });
     if (!entry) throw new NotFoundException(ENTRY_NOT_FOUND);
     await this.requireAdminOrOwner(approverId, entry.orgId);
@@ -191,7 +197,8 @@ export class FinanceService {
 
   // ─── Per Diem ────────────────────────────────────────────────
 
-  async createPerDiem(userId: string, dto: CreatePerDiemDto) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async createPerDiem(userId: string, dto: CreatePerDiemDto): Promise<any> {
     await this.requireAdminOrOwner(userId, dto.orgId);
     return this.prisma.perDiemPayout.create({
       data: {
@@ -207,7 +214,8 @@ export class FinanceService {
     });
   }
 
-  async getPerDiems(userId: string, orgId: string, eventId?: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async getPerDiems(userId: string, orgId: string, eventId?: string): Promise<any> {
     await this.requireMembership(userId, orgId);
     return this.prisma.perDiemPayout.findMany({
       where: { orgId, ...(eventId && { eventId }) },
@@ -216,7 +224,8 @@ export class FinanceService {
     });
   }
 
-  async markPerDiemPaid(adminId: string, id: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async markPerDiemPaid(adminId: string, id: string): Promise<any> {
     const pd = await this.prisma.perDiemPayout.findUnique({ where: { id } });
     if (!pd) throw new NotFoundException('Per diem not found');
     await this.requireAdminOrOwner(adminId, pd.orgId);

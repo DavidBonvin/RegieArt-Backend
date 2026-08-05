@@ -11,7 +11,8 @@ import { UpsertEventFinanceDto } from '../dto/upsert-event-finance.dto';
 export class FinanceService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getFinance(userId: string, eventId: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async getFinance(userId: string, eventId: string): Promise<any> {
     const event = await this.getEventOrFail(eventId);
     await this.requireMembership(userId, event.orgId);
 
@@ -21,7 +22,8 @@ export class FinanceService {
     });
   }
 
-  async upsertFinance(userId: string, eventId: string, dto: UpsertEventFinanceDto) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async upsertFinance(userId: string, eventId: string, dto: UpsertEventFinanceDto): Promise<any> {
     const event = await this.getEventOrFail(eventId);
     await this.requireAdminOrOwner(userId, event.orgId);
 
