@@ -35,13 +35,30 @@ async function bootstrap() {
   app.useGlobalInterceptors(new ResponseInterceptor());
 
   // ─── CORS ─────────────────────────────────────────────────
-  const corsOrigins = configService
+  const exactOrigins = configService
     .get<string>('CORS_ORIGINS', 'http://localhost:3001')
-    .split(',');
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
+  // Allow *.vercel.app and *.railway.app without needing env changes per deployment
+  const wildcardPatterns = [
+    /^https:\/\/[a-z0-9-]+\.vercel\.app$/,
+    /^https:\/\/[a-z0-9-]+-[a-z0-9-]+-[a-z0-9-]+\.vercel\.app$/,
+    /^https:\/\/[a-z0-9-]+\.up\.railway\.app$/,
+  ];
+
   app.enableCors({
-    origin: corsOrigins,
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true); // server-to-server or mobile
+      if (exactOrigins.includes(origin)) return callback(null, true);
+      if (wildcardPatterns.some((re) => re.test(origin))) return callback(null, true);
+      logger.warn(`CORS blocked: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
   await app.listen(port);
