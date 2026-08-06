@@ -12,8 +12,8 @@ const mockConfig = {
     const map: Record<string, string> = {
       KEYCLOAK_URL: 'http://keycloak:8090',
       KEYCLOAK_REALM: 'regieart',
-      KEYCLOAK_CLIENT_ID: 'regieart-api',
-      KEYCLOAK_CLIENT_SECRET: 'test-secret',
+      KEYCLOAK_ADMIN_USER: 'admin',
+      KEYCLOAK_ADMIN_PASSWORD: 'admin-pass',
     };
     return map[key];
   },
@@ -64,8 +64,8 @@ describe('AuthService', () => {
 
       await expect(service.register(validDto)).resolves.toBeUndefined();
 
-      const [tokenUrl] = (global.fetch as jest.Mock).mock.calls[0];
-      expect(tokenUrl).toContain('/protocol/openid-connect/token');
+      const fetchCall = (global.fetch as jest.Mock).mock.calls[0][0] as string;
+      expect(fetchCall).toContain('/realms/master/protocol/openid-connect/token');
 
       const [usersUrl, usersOpts] = (global.fetch as jest.Mock).mock.calls[1];
       expect(usersUrl).toContain('/admin/realms/regieart/users');
@@ -111,7 +111,11 @@ describe('AuthService', () => {
   describe('register — unexpected Keycloak error', () => {
     it('throws InternalServerErrorException on unexpected status (e.g. 500)', async () => {
       mockTokenFetch();
-      (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: false, status: 500 });
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        text: async () => 'Internal Server Error',
+      });
 
       await expect(service.register(validDto)).rejects.toThrow(
         InternalServerErrorException,

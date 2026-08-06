@@ -27,11 +27,11 @@ export class AuthService {
 
   private async getServiceAccountToken(): Promise<string> {
     const keycloakUrl = this.config.getOrThrow<string>('KEYCLOAK_URL');
-    const realm = this.config.getOrThrow<string>('KEYCLOAK_REALM');
-    const clientId = this.config.getOrThrow<string>('KEYCLOAK_CLIENT_ID');
-    const clientSecret = this.config.getOrThrow<string>('KEYCLOAK_CLIENT_SECRET');
+    const adminUser = this.config.getOrThrow<string>('KEYCLOAK_ADMIN_USER');
+    const adminPassword = this.config.getOrThrow<string>('KEYCLOAK_ADMIN_PASSWORD');
 
-    const url = `${keycloakUrl}/realms/${realm}/protocol/openid-connect/token`;
+    // Use admin-cli on master realm — works regardless of regieart-api bearerOnly flag
+    const url = `${keycloakUrl}/realms/master/protocol/openid-connect/token`;
 
     let res: Response;
     try {
@@ -39,9 +39,10 @@ export class AuthService {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
-          grant_type: 'client_credentials',
-          client_id: clientId,
-          client_secret: clientSecret,
+          grant_type: 'password',
+          client_id: 'admin-cli',
+          username: adminUser,
+          password: adminPassword,
         }),
       });
     } catch (err) {
@@ -50,7 +51,7 @@ export class AuthService {
     }
 
     if (!res.ok) {
-      this.logger.error(`Keycloak token endpoint returned ${res.status}`);
+      this.logger.error(`Keycloak admin token endpoint returned ${res.status}`);
       throw new ServiceUnavailableException('Authentication service unavailable');
     }
 
