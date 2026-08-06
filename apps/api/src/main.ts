@@ -41,16 +41,15 @@ async function bootstrap() {
     .map((o) => o.trim())
     .filter(Boolean);
 
-  // Allow *.vercel.app and *.railway.app without needing env changes per deployment
+  // *.vercel.app covers production + preview deployments; *.railway.app for internal services
   const wildcardPatterns = [
     /^https:\/\/[a-z0-9-]+\.vercel\.app$/,
-    /^https:\/\/[a-z0-9-]+-[a-z0-9-]+-[a-z0-9-]+\.vercel\.app$/,
     /^https:\/\/[a-z0-9-]+\.up\.railway\.app$/,
   ];
 
   app.enableCors({
     origin: (origin, callback) => {
-      if (!origin) return callback(null, true); // server-to-server or mobile
+      if (!origin) return callback(null, true);
       if (exactOrigins.includes(origin)) return callback(null, true);
       if (wildcardPatterns.some((re) => re.test(origin))) return callback(null, true);
       logger.warn(`CORS blocked: ${origin}`);
