@@ -95,8 +95,9 @@ export class AuthService {
       throw new ConflictException('An account with this email already exists');
     }
 
-    // Unexpected Keycloak error — log status but don't expose details
-    this.logger.error(`Keycloak user creation failed with status ${res.status}`);
+    // Log body to diagnose permission/config issues without exposing to client
+    const errorBody = await res.text().catch(() => '(unreadable)');
+    this.logger.error(`Keycloak user creation failed — status: ${res.status}, body: ${errorBody}`);
     throw new InternalServerErrorException('Could not create account. Please try again.');
   }
 }
