@@ -3,6 +3,7 @@ import {
   ConflictException,
   InternalServerErrorException,
   ServiceUnavailableException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
@@ -15,7 +16,12 @@ const mockConfig = {
       KEYCLOAK_ADMIN_USER: 'admin',
       KEYCLOAK_ADMIN_PASSWORD: 'admin-pass',
     };
+    if (!map[key]) throw new Error(`Configuration key "${key}" does not exist`);
     return map[key];
+  },
+  get: (key: string, defaultValue?: string) => {
+    const map: Record<string, string> = { KEYCLOAK_PUBLIC_CLIENT_ID: 'regieart-mobile' };
+    return map[key] ?? defaultValue;
   },
 };
 
@@ -120,6 +126,56 @@ describe('AuthService', () => {
       await expect(service.register(validDto)).rejects.toThrow(
         InternalServerErrorException,
       );
+    });
+  });
+
+  // ─── Login ───────────────────────────────────────────────────
+
+  const loginDto = { email: 'jean@example.com', password: 'Secure1234' };
+  const keycloakTokenBody = {
+    access_token: 'eyJaccess',
+    refresh_token: 'eyJrefresh',
+    expires_in: 300,
+    refresh_expires_in: 1800,
+    token_type: 'Bearer',
+  };
+
+  describe('login — success', () => {
+    it('returns accessToken + refreshToken on valid credentials', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => keycloakTokenBody,
+      });
+
+      const result = await service.login(loginDto);
+
+      expect(result.accessToken).toBe('eyJaccess');
+      expect(result.refreshToken).toBe('eyJrefresh');
+      expect(result.expiresIn).toBe(300);
+      expect(result.refreshExpiresIn).toBe(1800);
+
+      const [url, opts] = (global.fetch as jest.Mock).mock.calls[0];
+      expect(url).toContain('/realms/regieart/protocol/openid-connect/token');
+      const body = new URLSearchParams(opts.body as string);
+      expect(body.get('client_id')).toBe('regieart-mobile');
+      expect(body.get('grant_type')).toBe('password');
+    });
+  });
+
+  describe('login — wrong credentials', () => {
+    it('throws UnauthorizedException when Keycloak returns 401', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: false, status: 401 });
+
+      await expect(service.login(loginDto)).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('login — Keycloak unreachable', () => {
+    it('throws ServiceUnavailableException when fetch throws', async () => {
+      (global.fetch as jest.Mock).mockRejectedValueOnce(new Error('ECONNREFUSED'));
+
+      await expect(service.login(loginDto)).rejects.toThrow(ServiceUnavailableException);
     });
   });
 });
