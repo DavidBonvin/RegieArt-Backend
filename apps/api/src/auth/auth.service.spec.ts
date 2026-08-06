@@ -178,4 +178,45 @@ describe('AuthService', () => {
       await expect(service.login(loginDto)).rejects.toThrow(ServiceUnavailableException);
     });
   });
+
+  // ─── Refresh ─────────────────────────────────────────────────
+
+  const refreshDto = { refreshToken: 'eyJrefresh-token-long-enough' };
+
+  describe('refresh — success', () => {
+    it('returns new tokens when refresh_token is valid', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => keycloakTokenBody,
+      });
+
+      const result = await service.refresh(refreshDto);
+
+      expect(result.accessToken).toBe('eyJaccess');
+      expect(result.refreshToken).toBe('eyJrefresh');
+
+      const [url, opts] = (global.fetch as jest.Mock).mock.calls[0];
+      expect(url).toContain('/realms/regieart/protocol/openid-connect/token');
+      const body = new URLSearchParams(opts.body as string);
+      expect(body.get('grant_type')).toBe('refresh_token');
+      expect(body.get('refresh_token')).toBe(refreshDto.refreshToken);
+    });
+  });
+
+  describe('refresh — expired token', () => {
+    it('throws UnauthorizedException when Keycloak returns 400', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: false, status: 400 });
+
+      await expect(service.refresh(refreshDto)).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('refresh — Keycloak unreachable', () => {
+    it('throws ServiceUnavailableException when fetch throws', async () => {
+      (global.fetch as jest.Mock).mockRejectedValueOnce(new Error('ECONNREFUSED'));
+
+      await expect(service.refresh(refreshDto)).rejects.toThrow(ServiceUnavailableException);
+    });
+  });
 });

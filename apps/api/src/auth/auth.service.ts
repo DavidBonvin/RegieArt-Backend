@@ -9,6 +9,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { RefreshDto } from './dto/refresh.dto';
 
 interface KeycloakTokenResponse {
   access_token: string;
@@ -67,6 +68,47 @@ export class AuthService {
 
     if (!res.ok) {
       this.logger.error(`Keycloak login returned ${res.status}`);
+      throw new ServiceUnavailableException('Authentication service unavailable');
+    }
+
+    const data = (await res.json()) as KeycloakTokenResponse;
+    return {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      expiresIn: data.expires_in,
+      refreshExpiresIn: data.refresh_expires_in,
+    };
+  }
+
+  async refresh(dto: RefreshDto): Promise<LoginResult> {
+    const keycloakUrl = this.config.getOrThrow<string>('KEYCLOAK_URL');
+    const realm = this.config.getOrThrow<string>('KEYCLOAK_REALM');
+    const clientId = this.config.get<string>('KEYCLOAK_PUBLIC_CLIENT_ID', 'regieart-mobile');
+
+    const url = `${keycloakUrl}/realms/${realm}/protocol/openid-connect/token`;
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          client_id: clientId,
+          refresh_token: dto.refreshToken,
+        }),
+      });
+    } catch (err) {
+      this.logger.error(`Keycloak unreachable on refresh: ${(err as Error).message}`);
+      throw new ServiceUnavailableException('Authentication service unavailable');
+    }
+
+    if (res.status === 400 || res.status === 401) {
+      throw new UnauthorizedException('Refresh token expired or invalid');
+    }
+
+    if (!res.ok) {
+      this.logger.error(`Keycloak refresh returned ${res.status}`);
       throw new ServiceUnavailableException('Authentication service unavailable');
     }
 
