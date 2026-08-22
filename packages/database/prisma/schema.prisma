@@ -54,6 +54,8 @@ model User {
   approvedFinanceEntries  FinanceEntry[]        @relation("EntryApprover")
   perDiemPayouts          PerDiemPayout[]       @relation("PerDiemRecipient")
   perDiemPayoutsCreated   PerDiemPayout[]       @relation("PerDiemCreator")
+  sentInvitations         Invitation[]          @relation("InvitationCreator")
+  receivedInvitations     Invitation[]          @relation("InvitationTarget")
 
   @@index([email])
   @@index([city])
@@ -77,6 +79,7 @@ model Organization {
 
   members           OrganizationMember[]
   inviteLinks       InviteLink[]
+  invitations       Invitation[]
   assets            Asset[]
   songs             Song[]
   events            Event[]
@@ -720,6 +723,8 @@ model InstrumentAssignment {
 
 enum NotificationType {
   INVITE_ACCEPTED      // Alguien aceptó tu invitación
+  INVITE_REJECTED      // Alguien rechazó tu invitación
+  ORGANIZATION_INVITE  // Recibiste una invitación a una organización
   EVENT_ASSIGNED       // Te añadieron a un evento
   EVENT_CONFIRMED      // Un evento fue confirmado
   EVENT_CANCELLED      // Un evento fue cancelado
@@ -769,5 +774,41 @@ model Message {
   @@index([senderId, recipientId])
   @@index([recipientId, isRead])
   @@map("messages")
+}
+
+// ─── INVITACIONES DIRIGIDAS ───────────────────────────────────
+// Invitación nominal a un email/usuario específico con accept/reject.
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  REVOKED
+}
+
+model Invitation {
+  id              String           @id @default(cuid())
+  token           String           @unique @default(cuid())
+  organizationId  String
+  createdById     String
+  targetEmail     String           // Email del invitado
+  targetUserId    String?          // Resuelto si el usuario ya existe en el sistema
+  role            MemberRole       @default(MEMBER)
+  instrument      String?          // Instrumento sugerido: "Piano", "Guitarra"...
+  personalMessage String?          // Mensaje personal del invitador
+  status          InvitationStatus @default(PENDING)
+  expiresAt       DateTime
+  respondedAt     DateTime?
+  createdAt       DateTime         @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation("InvitationCreator", fields: [createdById], references: [id])
+  targetUser   User?        @relation("InvitationTarget", fields: [targetUserId], references: [id])
+
+  @@index([token])
+  @@index([targetEmail])
+  @@index([targetUserId])
+  @@map("invitations")
 }
 

@@ -3,6 +3,8 @@ import { PrismaService } from '../prisma/prisma.service';
 
 export type NotificationType =
   | 'INVITE_ACCEPTED'
+  | 'INVITE_REJECTED'
+  | 'ORGANIZATION_INVITE'
   | 'EVENT_ASSIGNED'
   | 'EVENT_CONFIRMED'
   | 'EVENT_CANCELLED'
