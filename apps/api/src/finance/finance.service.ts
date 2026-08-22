@@ -76,8 +76,20 @@ export class FinanceService {
     const { orgId, eventId, type, status, from, to, page = 1, limit = 20 } = query;
     if (orgId) await this.requireMembership(userId, orgId);
 
+    // Scope to user's own orgs when no orgId is provided
+    let orgIdFilter: object;
+    if (orgId) {
+      orgIdFilter = { orgId };
+    } else {
+      const memberships = await this.prisma.organizationMember.findMany({
+        where: { userId },
+        select: { organizationId: true },
+      });
+      orgIdFilter = { orgId: { in: memberships.map((m) => m.organizationId) } };
+    }
+
     const where = {
-      ...(orgId   && { orgId }),
+      ...orgIdFilter,
       ...(eventId && { eventId }),
       ...(type    && { type }),
       ...(status  && { status }),

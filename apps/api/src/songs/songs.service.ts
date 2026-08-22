@@ -38,17 +38,23 @@ export class SongsService {
     const { orgId, search, genre, page = 1, limit = 20 } = query;
     const skip = (page - 1) * limit;
 
-    // If orgId is provided, verify membership
+    // Scope to user's own orgs when no orgId is provided
+    let orgIdFilter: object;
     if (orgId) {
       await this.requireMembership(userId, orgId);
+      orgIdFilter = { orgId };
     } else {
-      // Without orgId: returns songs from all the user's organizations
+      const memberships = await this.prisma.organizationMember.findMany({
+        where: { userId },
+        select: { organizationId: true },
+      });
+      orgIdFilter = { orgId: { in: memberships.map((m) => m.organizationId) } };
     }
 
     const where = {
       deletedAt: null,
       isActive: true,
-      ...(orgId && { orgId }),
+      ...orgIdFilter,
       ...(genre && { genre }),
       ...(search && {
         OR: [

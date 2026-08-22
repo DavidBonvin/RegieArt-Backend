@@ -82,9 +82,21 @@ export class EventsService {
 
     if (orgId) await this.requireMembership(userId, orgId);
 
+    // Scope to user's own orgs when no orgId is provided
+    let orgIdFilter: object;
+    if (orgId) {
+      orgIdFilter = { orgId };
+    } else {
+      const memberships = await this.prisma.organizationMember.findMany({
+        where: { userId },
+        select: { organizationId: true },
+      });
+      orgIdFilter = { orgId: { in: memberships.map((m) => m.organizationId) } };
+    }
+
     const where = {
       deletedAt: null,
-      ...(orgId && { orgId }),
+      ...orgIdFilter,
       ...(type && { type }),
       ...(status && { status }),
       ...(from || to
