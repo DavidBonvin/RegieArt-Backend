@@ -56,5 +56,42 @@ services:
       timeout: 5s
       retries: 5
 
+  # ─── API (NestJS) ──────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: regieart-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      # Use docker service names instead of localhost
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/regieart?schema=public
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: regieart
+      KEYCLOAK_CLIENT_ID: regieart-api
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-change-me-in-production}
+      KEYCLOAK_ADMIN_USER: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      REDIS_URL: redis://redis:6379
+      CORS_ORIGINS: http://localhost:3001,http://localhost:3002,http://localhost:5173,http://localhost:8081
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-RegieArt <noreply@regieart.com>}
+      APP_URL: ${APP_URL:-http://localhost:3001}
+      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT}
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY}
+      STORAGE_BUCKET_NAME: ${STORAGE_BUCKET_NAME}
+    ports:
+      - '3005:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+
 volumes:
   postgres_data:
