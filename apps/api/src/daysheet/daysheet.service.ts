@@ -13,7 +13,7 @@
 
 import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { WeatherService } from './services/weather.service';
+import { WeatherService } from '../weather/weather.service';
 import { MemberRole } from '@regieart/types';
 
 @Injectable()

@@ -17,6 +17,7 @@ import { FinanceModule } from './finance/finance.module';
 import { SkillsModule } from './skills/skills.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { GeoModule } from './geo/geo.module';
+import { WeatherModule } from './weather/weather.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { GeoModule } from './geo/geo.module';
     SkillsModule,
     InventoryModule,
     GeoModule,
+    WeatherModule,
   ],
   providers: [
     // ─── Activa el ThrottlerGuard globalmente para toda la aplicación

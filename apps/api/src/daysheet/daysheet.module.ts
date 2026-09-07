@@ -7,9 +7,10 @@ import { DaysheetService } from './daysheet.service';
 import { ScheduleService } from './services/schedule.service';
 import { VehiclesService } from './services/vehicles.service';
 import { FinanceService } from './services/finance.service';
-import { WeatherService } from './services/weather.service';
+import { WeatherModule } from '../weather/weather.module';
 
 @Module({
+  imports: [WeatherModule],
   controllers: [
     DaysheetController,     // GET /events/:id/daysheet  GET /events/:id/weather
     ScheduleController,     // CRUD /events/:id/schedule
@@ -21,8 +22,7 @@ import { WeatherService } from './services/weather.service';
     ScheduleService,
     VehiclesService,
     FinanceService,
-    WeatherService,
   ],
-  exports: [DaysheetService, WeatherService],
+  exports: [DaysheetService],
 })
 export class DaysheetModule {}
