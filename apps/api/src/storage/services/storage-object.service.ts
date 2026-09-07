@@ -55,7 +55,7 @@ export class StorageObjectService {
     if (dto.key.startsWith('profiles/')) {
       if (!dto.key.startsWith(`profiles/${userId}/`)) {
         throw new UnauthorizedException(
-          'La clave del archivo no corresponde a tu cuenta.',
+          'La clé du fichier ne correspond pas à votre compte.',
         );
       }
     } else if (dto.key.startsWith('organizations/')) {
@@ -63,7 +63,7 @@ export class StorageObjectService {
       await this.membership.assertMembership(userId, orgId);
     } else {
       throw new UnauthorizedException(
-        'La clave del archivo tiene un formato de ruta desconocido.',
+        'La clé du fichier a un format de chemin inconnu.',
       );
     }
 
@@ -79,7 +79,7 @@ export class StorageObjectService {
       };
     } catch {
       throw new BadRequestException(
-        'El archivo no fue encontrado en el storage. Completa la subida antes de confirmar.',
+        'Le fichier est introuvable dans le stockage. Terminez le téléversement avant de confirmer.',
       );
     }
 
@@ -150,7 +150,7 @@ export class StorageObjectService {
     if (prefix.startsWith('profiles/')) {
       if (!prefix.startsWith(`profiles/${userId}/`)) {
         throw new UnauthorizedException(
-          'El prefijo de búsqueda no corresponde a tu cuenta.',
+          'Le préfixe de recherche ne correspond pas à votre compte.',
         );
       }
     } else if (prefix.startsWith('organizations/')) {
@@ -158,7 +158,7 @@ export class StorageObjectService {
       await this.membership.assertMembership(userId, orgId);
     } else {
       throw new UnauthorizedException(
-        'El prefijo de búsqueda tiene un formato de ruta desconocido.',
+        'Le préfixe de recherche a un format de chemin inconnu.',
       );
     }
 

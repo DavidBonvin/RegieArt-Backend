@@ -83,7 +83,7 @@ export class ScheduleService {
     await this.getItemOrFail(itemId, eventId);
 
     await this.prisma.eventScheduleItem.delete({ where: { id: itemId } });
-    return { message: 'Schedule item deleted' };
+    return { message: 'Élément du planning supprimé' };
   }
 
   // ─── Helpers ─────────────────────────────────────────────────
@@ -93,7 +93,7 @@ export class ScheduleService {
       where: { id: eventId, deletedAt: null },
       select: { id: true, orgId: true },
     });
-    if (!event) throw new NotFoundException('Event not found');
+    if (!event) throw new NotFoundException('Événement introuvable');
     return event;
   }
 
@@ -101,7 +101,7 @@ export class ScheduleService {
     const item = await this.prisma.eventScheduleItem.findFirst({
       where: { id: itemId, eventId },
     });
-    if (!item) throw new NotFoundException('Schedule item not found');
+    if (!item) throw new NotFoundException('Élément du planning introuvable');
     return item;
   }
 
@@ -109,14 +109,14 @@ export class ScheduleService {
     const m = await this.prisma.organizationMember.findUnique({
       where: { userId_organizationId: { userId, organizationId: orgId } },
     });
-    if (!m) throw new ForbiddenException('You are not a member of this organization');
+    if (!m) throw new ForbiddenException('Vous n\'êtes pas membre de cette organisation');
     return m;
   }
 
   private async requireAdminOrOwner(userId: string, orgId: string) {
     const m = await this.requireMembership(userId, orgId);
     if (m.role !== MemberRole.OWNER && m.role !== MemberRole.ADMIN) {
-      throw new ForbiddenException('Admin or Owner role required');
+      throw new ForbiddenException('Rôle Administrateur ou Propriétaire requis');
     }
   }
 }

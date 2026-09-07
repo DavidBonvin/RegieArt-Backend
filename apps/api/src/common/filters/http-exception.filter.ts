@@ -52,7 +52,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
   // array as `details` so clients can render per-field feedback.
   private extractMessage(exception: unknown): { message: string; details?: unknown } {
     if (!(exception instanceof HttpException)) {
-      return { message: 'Internal server error' };
+      return { message: 'Erreur interne du serveur' };
     }
 
     const response = exception.getResponse();
@@ -66,7 +66,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
       if (Array.isArray(payload.message)) {
         return {
-          message: 'Validation failed',
+          message: 'La validation a échoué',
           details: payload.message,
         };
       }

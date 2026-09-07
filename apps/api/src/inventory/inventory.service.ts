@@ -11,7 +11,7 @@ import { CreateInstrumentDto, InstrumentType } from './dto/create-instrument.dto
 import { AssignInstrumentDto } from './dto/assign-instrument.dto';
 import { InstrumentStatus } from '@regieart/database';
 
-const INSTRUMENT_NOT_FOUND = 'Instrument not found';
+const INSTRUMENT_NOT_FOUND = 'Instrument introuvable';
 
 @Injectable()
 export class InventoryService {
@@ -92,8 +92,8 @@ export class InventoryService {
     if (!instrument || !instrument.isActive) throw new NotFoundException(INSTRUMENT_NOT_FOUND);
     await this.requireAdminOrOwner(adminId, instrument.orgId);
 
-    if (instrument.status === 'IN_USE') throw new ConflictException('Instrument is already in use');
-    if (instrument.status === 'MAINTENANCE') throw new ConflictException('Instrument is under maintenance');
+    if (instrument.status === 'IN_USE') throw new ConflictException('L\'instrument est déjà en cours d\'utilisation');
+    if (instrument.status === 'MAINTENANCE') throw new ConflictException('L\'instrument est en maintenance');
 
     const [assignment] = await this.prisma.$transaction([
       this.prisma.instrumentAssignment.create({
@@ -115,7 +115,7 @@ export class InventoryService {
       this.notifications.fire({
         recipientId: dto.userId,
         type:        'INSTRUMENT_ASSIGNED',
-        title:       `Instrumento asignado: ${instrument.name}`,
+        title:       `Instrument attribué : ${instrument.name}`,
         body:        instrument.brand ? `${instrument.brand} ${instrument.model ?? ''}`.trim() : undefined,
         sourceId:    instrumentId,
         sourceType:  'instrument',
@@ -135,7 +135,7 @@ export class InventoryService {
       orderBy: { assignedAt: 'desc' },
     });
 
-    if (!activeAssignment) throw new ConflictException('Instrument is not currently assigned');
+    if (!activeAssignment) throw new ConflictException('L\'instrument n\'est pas attribué actuellement');
 
     await this.prisma.$transaction([
       this.prisma.instrumentAssignment.update({
@@ -148,7 +148,7 @@ export class InventoryService {
       }),
     ]);
 
-    return { message: 'Instrument returned successfully' };
+    return { message: 'Instrument restitué avec succès' };
   }
 
   async getAssignments(userId: string, orgId?: string, eventId?: string) {
@@ -177,14 +177,14 @@ export class InventoryService {
     const m = await this.prisma.organizationMember.findUnique({
       where: { userId_organizationId: { userId, organizationId: orgId } },
     });
-    if (!m) throw new ForbiddenException('You are not a member of this organization');
+    if (!m) throw new ForbiddenException('Vous n\'êtes pas membre de cette organisation');
     return m;
   }
 
   private async requireAdminOrOwner(userId: string, orgId: string) {
     const m = await this.requireMembership(userId, orgId);
     if (m.role !== MemberRole.OWNER && m.role !== MemberRole.ADMIN) {
-      throw new ForbiddenException('Admin or Owner role required');
+      throw new ForbiddenException('Rôle Administrateur ou Propriétaire requis');
     }
   }
 }

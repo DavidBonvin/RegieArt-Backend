@@ -76,13 +76,13 @@ export class ConvoyService {
 
     const venue = vehicle.event.venue;
     if (!venue?.latitude || !venue?.longitude) {
-      throw new BadRequestException('Venue has no GPS coordinates. Add them first.');
+      throw new BadRequestException('Le lieu n\'a pas de coordonnées GPS. Ajoutez-les d\'abord.');
     }
 
     // Geocode origin if coordinates are missing
     if (!vehicle.originLat || !vehicle.originLng) {
       if (!vehicle.originAddress) {
-        throw new BadRequestException('Vehicle has no origin address or coordinates.');
+        throw new BadRequestException('Le véhicule n\'a ni adresse d\'origine ni coordonnées.');
       }
       const geo = await this.geo.geocode({ address: vehicle.originAddress, country: 'FR' });
       await this.prisma.eventVehicle.update({
@@ -237,17 +237,17 @@ export class ConvoyService {
       res = await fetch(url);
     } catch (err) {
       this.logger.error(`OSRM unreachable: ${(err as Error).message}`);
-      throw new ServiceUnavailableException('Route calculation service unavailable');
+      throw new ServiceUnavailableException('Service de calcul d\'itinéraire indisponible');
     }
 
     if (!res.ok) {
       this.logger.error(`OSRM ${res.status}`);
-      throw new ServiceUnavailableException('Route calculation service unavailable');
+      throw new ServiceUnavailableException('Service de calcul d\'itinéraire indisponible');
     }
 
     const data = (await res.json()) as OsrmResponse;
     if (data.code !== 'Ok' || !data.routes?.length) {
-      throw new ServiceUnavailableException('Route calculation service unavailable');
+      throw new ServiceUnavailableException('Service de calcul d\'itinéraire indisponible');
     }
 
     return data.routes[0];

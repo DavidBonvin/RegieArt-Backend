@@ -32,14 +32,14 @@ export class InvitationsService {
       where: { id: orgId, isActive: true },
       select: { id: true, name: true, logoUrl: true },
     });
-    if (!org) throw new NotFoundException('Organization not found');
+    if (!org) throw new NotFoundException('Organisation introuvable');
 
     // Prevent duplicate pending invitation to the same email
     const duplicate = await this.prisma.invitation.findFirst({
       where: { organizationId: orgId, targetEmail: dto.email, status: 'PENDING' },
     });
     if (duplicate) {
-      throw new ConflictException('There is already a pending invitation for this email');
+      throw new ConflictException('Une invitation est déjà en attente pour cette adresse e-mail');
     }
 
     // Check if the email is already a member
@@ -52,7 +52,7 @@ export class InvitationsService {
         where: { userId_organizationId: { userId: existingUser.id, organizationId: orgId } },
       });
       if (alreadyMember) {
-        throw new ConflictException('This user is already a member of this organization');
+        throw new ConflictException('Cet utilisateur est déjà membre de cette organisation');
       }
     }
 
@@ -110,7 +110,7 @@ export class InvitationsService {
       this.notifications.fire({
         recipientId: existingUser.id,
         type:        'ORGANIZATION_INVITE',
-        title:       `${sender?.displayName ?? 'Alguien'} te invita a unirte a ${org.name}`,
+        title:       `${sender?.displayName ?? 'Quelqu\'un'} vous invite à rejoindre ${org.name}`,
         body:        dto.personalMessage,
         sourceId:    invitation.id,
         sourceType:  'invitation',
@@ -150,7 +150,7 @@ export class InvitationsService {
       where: { id: userId },
       select: { email: true },
     });
-    if (!user) throw new NotFoundException('User not found');
+    if (!user) throw new NotFoundException('Utilisateur introuvable');
 
     // Expire stale invitations silently
     await this.prisma.invitation.updateMany({
@@ -191,11 +191,11 @@ export class InvitationsService {
         createdBy:    { select: { id: true, displayName: true, avatarUrl: true } },
       },
     });
-    if (!inv) throw new NotFoundException('Invitation not found');
+    if (!inv) throw new NotFoundException('Invitation introuvable');
 
     if (inv.status === 'PENDING' && inv.expiresAt < new Date()) {
       await this.prisma.invitation.update({ where: { token }, data: { status: 'EXPIRED' } });
-      throw new BadRequestException('This invitation has expired');
+      throw new BadRequestException('Cette invitation a expiré');
     }
 
     return inv;
@@ -210,16 +210,16 @@ export class InvitationsService {
       where: { id: userId },
       select: { email: true, displayName: true },
     });
-    if (!user) throw new NotFoundException('User not found');
+    if (!user) throw new NotFoundException('Utilisateur introuvable');
 
     if (inv.targetEmail !== user.email) {
-      throw new ForbiddenException('This invitation was sent to a different email address');
+      throw new ForbiddenException('Cette invitation a été envoyée à une autre adresse e-mail');
     }
 
     const existing = await this.prisma.organizationMember.findUnique({
       where: { userId_organizationId: { userId, organizationId: inv.organizationId } },
     });
-    if (existing) throw new ConflictException('You are already a member of this organization');
+    if (existing) throw new ConflictException('Vous êtes déjà membre de cette organisation');
 
     await this.prisma.$transaction([
       this.prisma.organizationMember.create({
@@ -239,12 +239,12 @@ export class InvitationsService {
     this.notifications.fire({
       recipientId: inv.createdById,
       type:        'INVITE_ACCEPTED',
-      title:       `${user.displayName} aceptó tu invitación a ${org?.name}`,
+      title:       `${user.displayName} a accepté votre invitation à ${org?.name}`,
       sourceId:    inv.id,
       sourceType:  'invitation',
     });
 
-    return { message: 'Invitation accepted successfully', organizationId: inv.organizationId };
+    return { message: 'Invitation acceptée avec succès', organizationId: inv.organizationId };
   }
 
   // ─── Reject invitation ───────────────────────────────────────
@@ -256,10 +256,10 @@ export class InvitationsService {
       where: { id: userId },
       select: { email: true, displayName: true },
     });
-    if (!user) throw new NotFoundException('User not found');
+    if (!user) throw new NotFoundException('Utilisateur introuvable');
 
     if (inv.targetEmail !== user.email) {
-      throw new ForbiddenException('This invitation was sent to a different email address');
+      throw new ForbiddenException('Cette invitation a été envoyée à une autre adresse e-mail');
     }
 
     await this.prisma.invitation.update({
@@ -275,12 +275,12 @@ export class InvitationsService {
     this.notifications.fire({
       recipientId: inv.createdById,
       type:        'INVITE_REJECTED',
-      title:       `${user.displayName} rechazó tu invitación a ${org?.name}`,
+      title:       `${user.displayName} a refusé votre invitation à ${org?.name}`,
       sourceId:    inv.id,
       sourceType:  'invitation',
     });
 
-    return { message: 'Invitation rejected' };
+    return { message: 'Invitation refusée' };
   }
 
   // ─── Revoke invitation (admin/owner) ─────────────────────────
@@ -291,9 +291,9 @@ export class InvitationsService {
     const inv = await this.prisma.invitation.findFirst({
       where: { id: invitationId, organizationId: orgId },
     });
-    if (!inv) throw new NotFoundException('Invitation not found');
+    if (!inv) throw new NotFoundException('Invitation introuvable');
     if (inv.status !== 'PENDING') {
-      throw new BadRequestException('Only pending invitations can be revoked');
+      throw new BadRequestException('Seules les invitations en attente peuvent être révoquées');
     }
 
     await this.prisma.invitation.update({
@@ -301,7 +301,7 @@ export class InvitationsService {
       data:  { status: 'REVOKED' },
     });
 
-    return { message: 'Invitation revoked' };
+    return { message: 'Invitation révoquée' };
   }
 
   // ─── Helpers ─────────────────────────────────────────────────
@@ -314,15 +314,15 @@ export class InvitationsService {
         targetEmail: true, role: true, status: true, expiresAt: true,
       },
     });
-    if (!inv) throw new NotFoundException('Invitation not found');
-    if (inv.status === 'ACCEPTED') throw new ConflictException('This invitation has already been accepted');
-    if (inv.status === 'REJECTED') throw new BadRequestException('This invitation has already been rejected');
-    if (inv.status === 'REVOKED')  throw new BadRequestException('This invitation has been revoked');
+    if (!inv) throw new NotFoundException('Invitation introuvable');
+    if (inv.status === 'ACCEPTED') throw new ConflictException('Cette invitation a déjà été acceptée');
+    if (inv.status === 'REJECTED') throw new BadRequestException('Cette invitation a déjà été refusée');
+    if (inv.status === 'REVOKED')  throw new BadRequestException('Cette invitation a été révoquée');
     if (inv.status === 'EXPIRED' || inv.expiresAt < new Date()) {
       if (inv.status === 'PENDING') {
         await this.prisma.invitation.update({ where: { token }, data: { status: 'EXPIRED' } });
       }
-      throw new BadRequestException('This invitation has expired');
+      throw new BadRequestException('Cette invitation a expiré');
     }
     return inv;
   }
@@ -331,9 +331,9 @@ export class InvitationsService {
     const m = await this.prisma.organizationMember.findUnique({
       where: { userId_organizationId: { userId, organizationId: orgId } },
     });
-    if (!m) throw new ForbiddenException('You are not a member of this organization');
+    if (!m) throw new ForbiddenException('Vous n\'êtes pas membre de cette organisation');
     if (m.role !== MemberRole.OWNER && m.role !== MemberRole.ADMIN) {
-      throw new ForbiddenException('Admin or Owner role required');
+      throw new ForbiddenException('Rôle Administrateur ou Propriétaire requis');
     }
     return m;
   }

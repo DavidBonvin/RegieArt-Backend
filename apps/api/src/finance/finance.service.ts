@@ -13,7 +13,7 @@ import { UpdateFinanceEntryDto } from './dto/update-finance-entry.dto';
 import { CreatePerDiemDto } from './dto/create-per-diem.dto';
 import { QueryFinanceDto } from './dto/query-finance.dto';
 
-const ENTRY_NOT_FOUND = 'Entry not found';
+const ENTRY_NOT_FOUND = 'Écriture introuvable';
 
 @Injectable()
 export class FinanceService {
@@ -29,7 +29,7 @@ export class FinanceService {
     const exists = await this.prisma.financeCategory.findFirst({
       where: { orgId: dto.orgId, name: dto.name, type: dto.type },
     });
-    if (exists) throw new ConflictException('Category already exists');
+    if (exists) throw new ConflictException('La catégorie existe déjà');
     return this.prisma.financeCategory.create({ data: dto });
   }
 
@@ -43,10 +43,10 @@ export class FinanceService {
 
   async deleteCategory(userId: string, id: string) {
     const cat = await this.prisma.financeCategory.findUnique({ where: { id } });
-    if (!cat) throw new NotFoundException('Category not found');
+    if (!cat) throw new NotFoundException('Catégorie introuvable');
     await this.requireAdminOrOwner(userId, cat.orgId);
     await this.prisma.financeCategory.delete({ where: { id } });
-    return { message: 'Category deleted' };
+    return { message: 'Catégorie supprimée' };
   }
 
   // ─── Entries (Expenses / Income) ────────────────────────────
@@ -150,7 +150,7 @@ export class FinanceService {
     if (!entry) throw new NotFoundException(ENTRY_NOT_FOUND);
     if (entry.createdById !== userId) await this.requireAdminOrOwner(userId, entry.orgId);
     await this.prisma.financeEntry.delete({ where: { id } });
-    return { message: 'Entry deleted' };
+    return { message: 'Écriture supprimée' };
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -171,8 +171,8 @@ export class FinanceService {
     this.notifications.fire({
       recipientId: entry.createdById,
       type:        'EXPENSE_APPROVED',
-      title:       'Gasto aprobado',
-      body:        `${approver?.displayName} aprobó tu gasto de ${entry.amount} ${entry.currency}`,
+      title:       'Dépense approuvée',
+      body:        `${approver?.displayName} a approuvé votre dépense de ${entry.amount} ${entry.currency}`,
       sourceId:    id,
       sourceType:  'finance_entry',
     });
@@ -198,8 +198,8 @@ export class FinanceService {
     this.notifications.fire({
       recipientId: entry.createdById,
       type:        'EXPENSE_REJECTED',
-      title:       'Gasto rechazado',
-      body:        `${approver?.displayName} rechazó tu gasto${reason ? ': ' + reason : ''}`,
+      title:       'Dépense refusée',
+      body:        `${approver?.displayName} a refusé votre dépense${reason ? ' : ' + reason : ''}`,
       sourceId:    id,
       sourceType:  'finance_entry',
     });
@@ -239,7 +239,7 @@ export class FinanceService {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async markPerDiemPaid(adminId: string, id: string): Promise<any> {
     const pd = await this.prisma.perDiemPayout.findUnique({ where: { id } });
-    if (!pd) throw new NotFoundException('Per diem not found');
+    if (!pd) throw new NotFoundException('Per diem introuvable');
     await this.requireAdminOrOwner(adminId, pd.orgId);
     return this.prisma.perDiemPayout.update({
       where: { id },
@@ -296,14 +296,14 @@ export class FinanceService {
     const m = await this.prisma.organizationMember.findUnique({
       where: { userId_organizationId: { userId, organizationId: orgId } },
     });
-    if (!m) throw new ForbiddenException('You are not a member of this organization');
+    if (!m) throw new ForbiddenException('Vous n\'êtes pas membre de cette organisation');
     return m;
   }
 
   private async requireAdminOrOwner(userId: string, orgId: string) {
     const m = await this.requireMembership(userId, orgId);
     if (m.role !== MemberRole.OWNER && m.role !== MemberRole.ADMIN) {
-      throw new ForbiddenException('Admin or Owner role required');
+      throw new ForbiddenException('Rôle Administrateur ou Propriétaire requis');
     }
   }
 }

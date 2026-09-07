@@ -64,7 +64,7 @@ export class VehiclesService {
     await this.getVehicleOrFail(vehicleId, eventId);
 
     await this.prisma.eventVehicle.delete({ where: { id: vehicleId } });
-    return { message: 'Vehicle deleted' };
+    return { message: 'Véhicule supprimé' };
   }
 
   // ─── Pasajeros ────────────────────────────────────────────────
@@ -78,12 +78,12 @@ export class VehiclesService {
     const isMember = await this.prisma.organizationMember.findUnique({
       where: { userId_organizationId: { userId: dto.userId, organizationId: event.orgId } },
     });
-    if (!isMember) throw new ForbiddenException('Target user is not a member of this organization');
+    if (!isMember) throw new ForbiddenException('L\'utilisateur ciblé n\'est pas membre de cette organisation');
 
     const existing = await this.prisma.vehiclePassenger.findUnique({
       where: { vehicleId_userId: { vehicleId, userId: dto.userId } },
     });
-    if (existing) throw new ConflictException('User is already a passenger in this vehicle');
+    if (existing) throw new ConflictException('L\'utilisateur est déjà passager de ce véhicule');
 
     return this.prisma.vehiclePassenger.create({
       data: { vehicleId, userId: dto.userId },
@@ -99,10 +99,10 @@ export class VehiclesService {
     const passenger = await this.prisma.vehiclePassenger.findFirst({
       where: { vehicleId, userId: passengerId },
     });
-    if (!passenger) throw new NotFoundException('Passenger not found in this vehicle');
+    if (!passenger) throw new NotFoundException('Passager introuvable dans ce véhicule');
 
     await this.prisma.vehiclePassenger.delete({ where: { id: passenger.id } });
-    return { message: 'Passenger removed' };
+    return { message: 'Passager retiré' };
   }
 
   // ─── Puntos de recogida ───────────────────────────────────────
@@ -153,7 +153,7 @@ export class VehiclesService {
     await this.getPickupOrFail(pickupId, vehicleId);
 
     await this.prisma.vehiclePickupPoint.delete({ where: { id: pickupId } });
-    return { message: 'Pickup point deleted' };
+    return { message: 'Point de ramassage supprimé' };
   }
 
   // ─── Helpers ─────────────────────────────────────────────────
@@ -163,19 +163,19 @@ export class VehiclesService {
       where: { id: eventId, deletedAt: null },
       select: { id: true, orgId: true },
     });
-    if (!event) throw new NotFoundException('Event not found');
+    if (!event) throw new NotFoundException('Événement introuvable');
     return event;
   }
 
   private async getVehicleOrFail(vehicleId: string, eventId: string) {
     const v = await this.prisma.eventVehicle.findFirst({ where: { id: vehicleId, eventId } });
-    if (!v) throw new NotFoundException('Vehicle not found');
+    if (!v) throw new NotFoundException('Véhicule introuvable');
     return v;
   }
 
   private async getPickupOrFail(pickupId: string, vehicleId: string) {
     const p = await this.prisma.vehiclePickupPoint.findFirst({ where: { id: pickupId, vehicleId } });
-    if (!p) throw new NotFoundException('Pickup point not found');
+    if (!p) throw new NotFoundException('Point de ramassage introuvable');
     return p;
   }
 
@@ -183,14 +183,14 @@ export class VehiclesService {
     const m = await this.prisma.organizationMember.findUnique({
       where: { userId_organizationId: { userId, organizationId: orgId } },
     });
-    if (!m) throw new ForbiddenException('You are not a member of this organization');
+    if (!m) throw new ForbiddenException('Vous n\'êtes pas membre de cette organisation');
     return m;
   }
 
   private async requireAdminOrOwner(userId: string, orgId: string) {
     const m = await this.requireMembership(userId, orgId);
     if (m.role !== MemberRole.OWNER && m.role !== MemberRole.ADMIN) {
-      throw new ForbiddenException('Admin or Owner role required');
+      throw new ForbiddenException('Rôle Administrateur ou Propriétaire requis');
     }
   }
 }

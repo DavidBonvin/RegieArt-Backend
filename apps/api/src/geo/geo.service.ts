@@ -61,7 +61,7 @@ export class GeoService {
 
     const data = (await res.json()) as BanResponse;
     if (!data.features?.length) {
-      throw new NotFoundException('Address not found for the given country');
+      throw new NotFoundException('Adresse introuvable pour le pays indiqué');
     }
 
     const best = data.features[0];
@@ -101,7 +101,7 @@ export class GeoService {
 
     const places = (await res.json()) as NominatimPlace[];
     if (!places.length) {
-      throw new NotFoundException('Address not found for the given country');
+      throw new NotFoundException('Adresse introuvable pour le pays indiqué');
     }
 
     const best = places[0];

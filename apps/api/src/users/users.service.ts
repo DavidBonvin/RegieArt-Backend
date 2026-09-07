@@ -19,7 +19,7 @@ export class UsersService {
     });
 
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Utilisateur introuvable');
     }
 
     return user;
@@ -33,7 +33,7 @@ export class UsersService {
       select: { id: true, displayName: true, avatarUrl: true, bannerUrl: true },
     });
 
-    if (!user) throw new NotFoundException('User not found');
+    if (!user) throw new NotFoundException('Utilisateur introuvable');
 
     return {
       userId: user.id,

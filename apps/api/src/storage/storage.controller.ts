@@ -99,7 +99,7 @@ export class StorageController {
     @Query('key') key: string,
   ) {
     if (!key) {
-      throw new UnauthorizedException('The key parameter is required.');
+      throw new UnauthorizedException('Le paramètre key est requis.');
     }
 
     const downloadUrl = await this.storageService.generateDownloadPresignedUrl(user.id, key);
@@ -140,7 +140,7 @@ export class StorageController {
     @Param('id') id: string,
   ) {
     const asset = await this.storageService.getAsset(id);
-    if (!asset) throw new NotFoundException(`Asset "${id}" not found.`);
+    if (!asset) throw new NotFoundException(`Asset "${id}" introuvable.`);
 
     // Check access: the uploader can always access their own assets;
     // for org assets, verify membership
@@ -148,7 +148,7 @@ export class StorageController {
       if (asset.orgId) {
         await this.storageService.assertOrgMembership(user.id, asset.orgId);
       } else {
-        throw new UnauthorizedException('You do not have access to this file.');
+        throw new UnauthorizedException('Vous n\'avez pas accès à ce fichier.');
       }
     }
 

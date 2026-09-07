@@ -30,7 +30,7 @@ export class CreateFinanceEntryDto {
   amount: string;
 
   @IsString()
-  @Matches(/^[A-Z]{3}$/, { message: 'currency debe ser ISO 4217 (ej: EUR, CAD)' })
+  @Matches(/^[A-Z]{3}$/, { message: 'currency doit être au format ISO 4217 (ex : EUR, CAD)' })
   @IsOptional()
   currency?: string;
 

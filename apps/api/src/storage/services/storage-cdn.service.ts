@@ -59,9 +59,9 @@ export class StorageCdnService {
   private assertCdnConfigured(): void {
     if (!this.cdnBaseUrl) {
       throw new InternalServerErrorException(
-        'STORAGE_CDN_URL no está configurada. ' +
-          'Vincula un dominio custom al bucket R2 en el panel de Cloudflare y ' +
-          'añade la variable STORAGE_CDN_URL en Railway.',
+        'STORAGE_CDN_URL n\'est pas configurée. ' +
+          'Associez un domaine personnalisé au bucket R2 dans le panneau Cloudflare et ' +
+          'ajoutez la variable STORAGE_CDN_URL dans Railway.',
       );
     }
   }

@@ -80,14 +80,14 @@ export class StorageMultipartService {
 
     if (!policy.allowedMimeTypes.includes(dto.contentType)) {
       throw new BadRequestException(
-        `Content-Type '${dto.contentType}' no permitido para '${dto.assetType}'.`,
+        `Content-Type '${dto.contentType}' non autorisé pour '${dto.assetType}'.`,
       );
     }
 
     if (dto.fileSizeBytes > policy.maxSizeBytes) {
       const limitMb = (policy.maxSizeBytes / (1024 * 1024)).toFixed(0);
       throw new BadRequestException(
-        `El archivo supera el límite de ${limitMb} MB para '${dto.assetType}'.`,
+        `Le fichier dépasse la limite de ${limitMb} Mo pour '${dto.assetType}'.`,
       );
     }
 
@@ -112,7 +112,7 @@ export class StorageMultipartService {
 
     if (totalParts > MAX_PARTS) {
       throw new BadRequestException(
-        `El archivo requiere ${totalParts} partes, excede el máximo de ${MAX_PARTS}.`,
+        `Le fichier nécessite ${totalParts} parties, ce qui dépasse le maximum de ${MAX_PARTS}.`,
       );
     }
 
@@ -134,7 +134,7 @@ export class StorageMultipartService {
       uploadId = result.UploadId!;
     } catch (error) {
       this.logger.error('Fallo al crear multipart upload', error);
-      throw new InternalServerErrorException('No se pudo iniciar la subida.');
+      throw new InternalServerErrorException('Impossible de démarrer le téléversement.');
     }
 
     // Generar URLs pre-firmadas para cada parte en paralelo
@@ -228,7 +228,7 @@ export class StorageMultipartService {
     } catch (error) {
       this.logger.error(`Fallo al completar multipart key="${dto.key}"`, error);
       throw new InternalServerErrorException(
-        'No se pudo completar la subida. Las partes pueden haber expirado.',
+        'Impossible de finaliser le téléversement. Les parties ont peut-être expiré.',
       );
     }
   }

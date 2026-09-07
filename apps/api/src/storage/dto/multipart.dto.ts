@@ -25,7 +25,7 @@ import { AssetType } from '../constants/upload-policies';
 // ── Iniciar multipart upload ──────────────────────────────────
 export class InitiateMultipartDto {
   @IsEnum(AssetType, {
-    message: `assetType debe ser uno de: ${Object.values(AssetType).join(', ')}`,
+    message: `assetType doit être l'un de : ${Object.values(AssetType).join(', ')}`,
   })
   assetType!: AssetType;
 

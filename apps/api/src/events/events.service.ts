@@ -15,7 +15,7 @@ import { UpdateVenueDto } from './dto/update-venue.dto';
 import { MemberRole } from '@regieart/types';
 import { NotificationsService } from '../notifications/notifications.service';
 
-const EVENT_NOT_FOUND = 'Event not found';
+const EVENT_NOT_FOUND = 'Événement introuvable';
 
 @Injectable()
 export class EventsService {
@@ -41,14 +41,14 @@ export class EventsService {
 
   async findOneVenue(id: string) {
     const venue = await this.prisma.venue.findUnique({ where: { id } });
-    if (!venue) throw new NotFoundException('Venue not found');
+    if (!venue) throw new NotFoundException('Lieu introuvable');
     return venue;
   }
 
   async updateVenue(userId: string, id: string, dto: UpdateVenueDto) {
     const venue = await this.prisma.venue.findUnique({ where: { id } });
-    if (!venue) throw new NotFoundException('Venue not found');
-    if (venue.createdById !== userId) throw new ForbiddenException('Only the creator can edit this venue');
+    if (!venue) throw new NotFoundException('Lieu introuvable');
+    if (venue.createdById !== userId) throw new ForbiddenException('Seul le créateur peut modifier ce lieu');
     return this.prisma.venue.update({ where: { id }, data: dto });
   }
 
@@ -199,7 +199,7 @@ export class EventsService {
     await this.requireAdminOrOwner(userId, event.orgId);
 
     await this.prisma.event.update({ where: { id }, data: { deletedAt: new Date(), status: 'CANCELLED' } });
-    return { message: 'Event deleted successfully' };
+    return { message: 'Événement supprimé avec succès' };
   }
 
   // ─── ROSTER ──────────────────────────────────────────────────
@@ -236,12 +236,12 @@ export class EventsService {
     const targetMembership = await this.prisma.organizationMember.findUnique({
       where: { userId_organizationId: { userId: dto.userId, organizationId: event.orgId } },
     });
-    if (!targetMembership) throw new ForbiddenException('Target user is not a member of this organization');
+    if (!targetMembership) throw new ForbiddenException('L\'utilisateur ciblé n\'est pas membre de cette organisation');
 
     const existing = await this.prisma.eventRoster.findUnique({
       where: { eventId_userId: { eventId, userId: dto.userId } },
     });
-    if (existing) throw new ConflictException('User is already on the roster for this event');
+    if (existing) throw new ConflictException('L\'utilisateur figure déjà dans la distribution de cet événement');
 
     const rosterEntry = await this.prisma.eventRoster.create({
       data: {
@@ -258,8 +258,8 @@ export class EventsService {
     this.notifications.fire({
       recipientId: dto.userId,
       type:        'EVENT_ASSIGNED',
-      title:       `Te añadieron al evento: ${event.title}`,
-      body:        dto.role ? `Tu rol: ${dto.role}` : undefined,
+      title:       `Vous avez été ajouté à l'événement : ${event.title}`,
+      body:        dto.role ? `Votre rôle : ${dto.role}` : undefined,
       sourceId:    eventId,
       sourceType:  'event',
     });
@@ -280,15 +280,15 @@ export class EventsService {
     const isAdminOrOwner = await this.isAdminOrOwner(userId, event.orgId);
     const isSelf = userId === targetUserId;
 
-    if (!isAdminOrOwner && !isSelf) throw new ForbiddenException('Not enough permissions');
+    if (!isAdminOrOwner && !isSelf) throw new ForbiddenException('Permissions insuffisantes');
     if (!isAdminOrOwner && (dto.role !== undefined || dto.notes !== undefined)) {
-      throw new ForbiddenException('Only admins can change role or notes');
+      throw new ForbiddenException('Seuls les administrateurs peuvent modifier le rôle ou les notes');
     }
 
     const entry = await this.prisma.eventRoster.findUnique({
       where: { eventId_userId: { eventId, userId: targetUserId } },
     });
-    if (!entry) throw new NotFoundException('Roster entry not found');
+    if (!entry) throw new NotFoundException('Entrée de distribution introuvable');
 
     return this.prisma.eventRoster.update({
       where: { id: entry.id },
@@ -309,10 +309,10 @@ export class EventsService {
     const entry = await this.prisma.eventRoster.findUnique({
       where: { eventId_userId: { eventId, userId: targetUserId } },
     });
-    if (!entry) throw new NotFoundException('Roster entry not found');
+    if (!entry) throw new NotFoundException('Entrée de distribution introuvable');
 
     await this.prisma.eventRoster.delete({ where: { id: entry.id } });
-    return { message: 'Member removed from roster' };
+    return { message: 'Membre retiré de la distribution' };
   }
 
   // ─── HELPERS ─────────────────────────────────────────────────
@@ -321,14 +321,14 @@ export class EventsService {
     const m = await this.prisma.organizationMember.findUnique({
       where: { userId_organizationId: { userId, organizationId: orgId } },
     });
-    if (!m) throw new ForbiddenException('You are not a member of this organization');
+    if (!m) throw new ForbiddenException('Vous n\'êtes pas membre de cette organisation');
     return m;
   }
 
   private async requireAdminOrOwner(userId: string, orgId: string) {
     const m = await this.requireMembership(userId, orgId);
     if (m.role !== MemberRole.OWNER && m.role !== MemberRole.ADMIN) {
-      throw new ForbiddenException('Admin or Owner role required');
+      throw new ForbiddenException('Rôle Administrateur ou Propriétaire requis');
     }
     return m;
   }

@@ -32,7 +32,7 @@ export class CreatePresignedUrlDto {
 
   // Tipo de activo: define la política de MIME, tamaño y ruta a aplicar
   @IsEnum(AssetType, {
-    message: `assetType debe ser uno de: ${Object.values(AssetType).join(', ')}`,
+    message: `assetType doit être l'un de : ${Object.values(AssetType).join(', ')}`,
   })
   assetType!: AssetType;
 

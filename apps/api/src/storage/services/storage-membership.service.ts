@@ -25,7 +25,7 @@ export class StorageMembershipService {
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
   ) {}
-  
+
   async assertMembership(userId: string, orgId: string): Promise<void> {
     const cacheKey = `storage:membership:${userId}:${orgId}`;
     const client = this.redis.getClient();
@@ -37,7 +37,7 @@ export class StorageMembershipService {
 
       if (cached === '0') {
         throw new ForbiddenException(
-          'You do not have access to this organisations resources.',
+          'Vous n\'avez pas accès aux ressources de cette organisation.',
         );
       }
     } catch (err) {
@@ -55,7 +55,7 @@ export class StorageMembershipService {
 
     if (!isMember) {
       throw new ForbiddenException(
-        'You do not have access to this organisations resources.',
+        'Vous n\'avez pas accès aux ressources de cette organisation.',
       );
     }
   }

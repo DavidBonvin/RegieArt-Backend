@@ -17,14 +17,14 @@ export class MessagesService {
 
   async send(senderId: string, dto: CreateMessageDto) {
     if (senderId === dto.recipientId) {
-      throw new BadRequestException('Cannot send a message to yourself');
+      throw new BadRequestException('Impossible de s\'envoyer un message à soi-même');
     }
 
     const recipient = await this.prisma.user.findUnique({
       where: { id: dto.recipientId, isActive: true },
       select: { id: true, displayName: true },
     });
-    if (!recipient) throw new NotFoundException('Recipient not found');
+    if (!recipient) throw new NotFoundException('Destinataire introuvable');
 
     const sender = await this.prisma.user.findUnique({
       where: { id: senderId },
@@ -47,7 +47,7 @@ export class MessagesService {
     this.notifications.fire({
       recipientId: dto.recipientId,
       type:        'MESSAGE_RECEIVED',
-      title:       `Nuevo mensaje de ${sender?.displayName ?? 'alguien'}`,
+      title:       `Nouveau message de ${sender?.displayName ?? 'quelqu\'un'}`,
       body:        dto.body.slice(0, 100),
       sourceId:    message.id,
       sourceType:  'message',
@@ -124,7 +124,7 @@ export class MessagesService {
       where: { id: partnerId },
       select: { id: true, displayName: true, avatarUrl: true },
     });
-    if (!partner) throw new NotFoundException('User not found');
+    if (!partner) throw new NotFoundException('Utilisateur introuvable');
 
     const skip = (page - 1) * limit;
     const where = {
@@ -161,7 +161,7 @@ export class MessagesService {
     const msg = await this.prisma.message.findFirst({
       where: { id: messageId, recipientId: userId },
     });
-    if (!msg) throw new ForbiddenException('Message not found or not yours');
+    if (!msg) throw new ForbiddenException('Message introuvable ou ne vous appartenant pas');
     if (msg.isRead) return msg;
     return this.prisma.message.update({
       where: { id: messageId },

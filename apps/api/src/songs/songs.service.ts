@@ -9,7 +9,7 @@ import { UpdateSongDto } from './dto/update-song.dto';
 import { SearchSongsDto } from './dto/search-songs.dto';
 import { MemberRole } from '@regieart/types';
 
-const SONG_NOT_FOUND = 'Song not found';
+const SONG_NOT_FOUND = 'Morceau introuvable';
 
 @Injectable()
 export class SongsService {
@@ -118,7 +118,7 @@ export class SongsService {
     await this.requireAdminOrOwner(userId, song.orgId);
 
     await this.prisma.song.update({ where: { id }, data: { deletedAt: new Date(), isActive: false } });
-    return { message: 'Song deleted successfully' };
+    return { message: 'Morceau supprimé avec succès' };
   }
 
   // ─── HELPERS ─────────────────────────────────────────────────
@@ -127,14 +127,14 @@ export class SongsService {
     const m = await this.prisma.organizationMember.findUnique({
       where: { userId_organizationId: { userId, organizationId: orgId } },
     });
-    if (!m) throw new ForbiddenException('You are not a member of this organization');
+    if (!m) throw new ForbiddenException('Vous n\'êtes pas membre de cette organisation');
     return m;
   }
 
   private async requireAdminOrOwner(userId: string, orgId: string) {
     const m = await this.requireMembership(userId, orgId);
     if (m.role !== MemberRole.OWNER && m.role !== MemberRole.ADMIN) {
-      throw new ForbiddenException('Admin or Owner role required');
+      throw new ForbiddenException('Rôle Administrateur ou Propriétaire requis');
     }
     return m;
   }

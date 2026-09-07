@@ -34,13 +34,13 @@ export class DaysheetService {
         createdBy: { select: { id: true, displayName: true } },
       },
     });
-    if (!event) throw new NotFoundException('Event not found');
+    if (!event) throw new NotFoundException('Événement introuvable');
 
 
     const membership = await this.prisma.organizationMember.findUnique({
       where: { userId_organizationId: { userId, organizationId: event.orgId } },
     });
-    if (!membership) throw new ForbiddenException('You are not a member of this organization');
+    if (!membership) throw new ForbiddenException('Vous n\'êtes pas membre de cette organisation');
 
     const isAdminOrOwner =
       membership.role === MemberRole.OWNER || membership.role === MemberRole.ADMIN;

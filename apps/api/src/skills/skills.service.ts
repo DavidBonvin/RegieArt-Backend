@@ -16,15 +16,15 @@ export class SkillsService {
 
   async createCategory(dto: CreateSkillCategoryDto) {
     const exists = await this.prisma.skillCategory.findUnique({ where: { name: dto.name } });
-    if (exists) throw new ConflictException('Skill category already exists');
+    if (exists) throw new ConflictException('La catégorie de compétence existe déjà');
     return this.prisma.skillCategory.create({ data: dto });
   }
 
   async deleteCategory(id: string) {
     const cat = await this.prisma.skillCategory.findUnique({ where: { id } });
-    if (!cat) throw new NotFoundException('Category not found');
+    if (!cat) throw new NotFoundException('Catégorie introuvable');
     await this.prisma.skillCategory.delete({ where: { id } });
-    return { message: 'Category deleted' };
+    return { message: 'Catégorie supprimée' };
   }
 
   // ─── Habilidades del usuario ──────────────────────────────────
@@ -34,7 +34,7 @@ export class SkillsService {
       where: { id: targetUserId, isActive: true },
       select: { id: true, displayName: true },
     });
-    if (!user) throw new NotFoundException('User not found');
+    if (!user) throw new NotFoundException('Utilisateur introuvable');
     return this.prisma.userSkill.findMany({
       where: { userId: targetUserId },
       include: { skillCategory: true },
@@ -44,12 +44,12 @@ export class SkillsService {
 
   async addSkill(userId: string, dto: AddUserSkillDto) {
     const cat = await this.prisma.skillCategory.findUnique({ where: { id: dto.skillCategoryId } });
-    if (!cat) throw new NotFoundException('Skill category not found');
+    if (!cat) throw new NotFoundException('Catégorie de compétence introuvable');
 
     const existing = await this.prisma.userSkill.findUnique({
       where: { userId_skillCategoryId: { userId, skillCategoryId: dto.skillCategoryId } },
     });
-    if (existing) throw new ConflictException('You already have this skill');
+    if (existing) throw new ConflictException('Vous possédez déjà cette compétence');
 
     return this.prisma.userSkill.create({
       data: {
@@ -66,9 +66,9 @@ export class SkillsService {
     const skill = await this.prisma.userSkill.findFirst({
       where: { id: skillId, userId },
     });
-    if (!skill) throw new NotFoundException('Skill not found or not yours');
+    if (!skill) throw new NotFoundException('Compétence introuvable ou ne vous appartenant pas');
     await this.prisma.userSkill.delete({ where: { id: skillId } });
-    return { message: 'Skill removed' };
+    return { message: 'Compétence supprimée' };
   }
 
   // ─── Búsqueda de usuarios ─────────────────────────────────────
@@ -143,7 +143,7 @@ export class SkillsService {
         },
       },
     });
-    if (!user) throw new NotFoundException('User not found');
+    if (!user) throw new NotFoundException('Utilisateur introuvable');
     return user;
   }
 }

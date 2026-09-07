@@ -350,7 +350,7 @@ model EventRoster {
   id            String           @id @default(cuid())
   eventId       String
   userId        String
-  role          String?          // "Trompeta", "Director Musical", "Técnico FOH"
+  role          String?          // "Trompette", "Directeur musical", "Technicien FOH"
   status        AttendanceStatus @default(INVITED)
   notes         String?          // Notas del admin al invitar
   invitedAt     DateTime         @default(now())
@@ -631,7 +631,7 @@ enum ExpertiseLevel {
 
 model SkillCategory {
   id   String            @id @default(cuid())
-  name String            @unique // "Trompeta", "Director Musical", "Técnico FOH"
+  name String            @unique // "Trompette", "Directeur musical", "Technicien FOH"
   type SkillCategoryType
   icon String?           // emoji
 
@@ -795,7 +795,7 @@ model Invitation {
   targetEmail     String           // Email del invitado
   targetUserId    String?          // Resuelto si el usuario ya existe en el sistema
   role            MemberRole       @default(MEMBER)
-  instrument      String?          // Instrumento sugerido: "Piano", "Guitarra"...
+  instrument      String?          // Instrumento sugerido: "Piano", "Guitare"...
   personalMessage String?          // Mensaje personal del invitador
   status          InvitationStatus @default(PENDING)
   expiresAt       DateTime

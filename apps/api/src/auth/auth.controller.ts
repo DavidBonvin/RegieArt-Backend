@@ -12,7 +12,7 @@ export class AuthController {
   @HttpCode(HttpStatus.CREATED)
   register(@Body() dto: RegisterDto): Promise<{ message: string }> {
     return this.authService.register(dto).then(() => ({
-      message: 'Account created. You can now log in.',
+      message: 'Compte créé. Vous pouvez maintenant vous connecter.',
     }));
   }
 

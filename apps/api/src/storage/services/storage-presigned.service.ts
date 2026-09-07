@@ -59,7 +59,7 @@ function assertRequiredParams(
   const missing = required.filter((field) => !params[field]);
   if (missing.length > 0) {
     throw new BadRequestException(
-      `Faltan parámetros requeridos para el tipo '${assetType}': ${missing.join(', ')}.`,
+      `Paramètres requis manquants pour le type '${assetType}' : ${missing.join(', ')}.`,
     );
   }
 }
@@ -86,8 +86,8 @@ export class StoragePresignedService {
 
     if (!policy.allowedMimeTypes.includes(dto.contentType)) {
       throw new BadRequestException(
-        `Content-Type '${dto.contentType}' no es válido para '${dto.assetType}'. ` +
-          `Formatos aceptados: ${policy.allowedMimeTypes.join(', ')}.`,
+        `Content-Type '${dto.contentType}' n'est pas valide pour '${dto.assetType}'. ` +
+          `Formats acceptés : ${policy.allowedMimeTypes.join(', ')}.`,
       );
     }
 
@@ -95,8 +95,8 @@ export class StoragePresignedService {
       const limitMb = (policy.maxSizeBytes / (1024 * 1024)).toFixed(0);
       const requestedMb = (dto.fileSizeBytes / (1024 * 1024)).toFixed(2);
       throw new BadRequestException(
-        `El archivo (${requestedMb} MB) supera el límite permitido de ${limitMb} MB ` +
-          `para el tipo '${dto.assetType}'.`,
+        `Le fichier (${requestedMb} Mo) dépasse la limite autorisée de ${limitMb} Mo ` +
+          `pour le type '${dto.assetType}'.`,
       );
     }
 
@@ -179,7 +179,7 @@ export class StoragePresignedService {
         error instanceof Error ? error.stack : error,
       );
       throw new InternalServerErrorException(
-        'No se pudo generar la URL de subida segura. Inténtalo de nuevo.',
+        'Impossible de générer l\'URL de téléversement sécurisée. Veuillez réessayer.',
       );
     }
   }
@@ -259,7 +259,7 @@ export class StoragePresignedService {
         error instanceof Error ? error.stack : error,
       );
       throw new InternalServerErrorException(
-        'Failed to generate the download URL. Please try again.',
+        'Impossible de générer l\'URL de téléchargement. Veuillez réessayer.',
       );
     }
   }
@@ -271,13 +271,13 @@ export class StoragePresignedService {
     if (key.startsWith('profiles/')) {
       const ownerSegment = key.split('/')[1];
       if (ownerSegment !== userId) {
-        throw new ForbiddenException('You do not have permission to access this file.');
+        throw new ForbiddenException('Vous n\'avez pas la permission d\'accéder à ce fichier.');
       }
     } else if (key.startsWith('organizations/')) {
       const orgId = key.split('/')[1];
       await this.membership.assertMembership(userId, orgId);
     } else {
-      throw new ForbiddenException('The file key has an unknown path format.');
+      throw new ForbiddenException('La clé du fichier a un format de chemin inconnu.');
     }
   }
 

@@ -48,7 +48,7 @@ export class EmailService {
       body: JSON.stringify({
         from: this.fromAddress,
         to: [payload.to],
-        subject: `${payload.inviterName} te invita a unirte a ${payload.orgName} en RegieArt`,
+        subject: `${payload.inviterName} vous invite à rejoindre ${payload.orgName} sur RegieArt`,
         html,
       }),
     });
@@ -61,25 +61,25 @@ export class EmailService {
 
   private buildInvitationHtml(p: InvitationEmailPayload): string {
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(p.inviteUrl)}&size=180x180&margin=10`;
-    const expiryLabel = p.expiresAt.toLocaleDateString('es-ES', {
+    const expiryLabel = p.expiresAt.toLocaleDateString('fr-FR', {
       day: 'numeric',
       month: 'long',
       year: 'numeric',
     });
     const roleLabels: Record<string, string> = {
-      OWNER: 'Propietario',
-      ADMIN: 'Administrador',
-      MEMBER: 'Miembro',
-      EXTERNAL_TECH: 'Técnico Externo',
+      OWNER: 'Propriétaire',
+      ADMIN: 'Administrateur',
+      MEMBER: 'Membre',
+      EXTERNAL_TECH: 'Technicien externe',
     };
     const roleLabel = roleLabels[p.role] ?? p.role;
 
     return `<!DOCTYPE html>
-<html lang="es">
+<html lang="fr">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Invitación a ${p.orgName}</title>
+  <title>Invitation à ${p.orgName}</title>
 </head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:'Helvetica Neue',Arial,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 0;">
@@ -93,7 +93,7 @@ export class EmailService {
             <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-.3px;">
               RegieArt
             </h1>
-            <p style="margin:4px 0 0;color:#a0aec0;font-size:13px;">Gestión profesional para músicos</p>
+            <p style="margin:4px 0 0;color:#a0aec0;font-size:13px;">Gestion professionnelle pour musiciens</p>
           </td>
         </tr>
 
@@ -101,11 +101,11 @@ export class EmailService {
         <tr>
           <td style="padding:40px 40px 32px;">
             <h2 style="margin:0 0 8px;color:#1a202c;font-size:20px;font-weight:700;">
-              ¡Te han invitado!
+              Vous avez été invité !
             </h2>
             <p style="margin:0 0 24px;color:#4a5568;font-size:15px;line-height:1.6;">
-              <strong>${p.inviterName}</strong> te invita a unirte a la organización
-              <strong>${p.orgName}</strong> en RegieArt.
+              <strong>${p.inviterName}</strong> vous invite à rejoindre l'organisation
+              <strong>${p.orgName}</strong> sur RegieArt.
             </p>
 
             <!-- Details card -->
@@ -113,11 +113,11 @@ export class EmailService {
               <tr><td style="padding:20px 24px;">
                 <table width="100%" cellpadding="0" cellspacing="0">
                   <tr>
-                    <td style="color:#718096;font-size:12px;text-transform:uppercase;letter-spacing:.8px;padding-bottom:4px;">Organización</td>
+                    <td style="color:#718096;font-size:12px;text-transform:uppercase;letter-spacing:.8px;padding-bottom:4px;">Organisation</td>
                     <td style="color:#1a202c;font-size:15px;font-weight:600;text-align:right;">${p.orgName}</td>
                   </tr>
                   <tr>
-                    <td style="color:#718096;font-size:12px;text-transform:uppercase;letter-spacing:.8px;padding:8px 0 4px;">Rol asignado</td>
+                    <td style="color:#718096;font-size:12px;text-transform:uppercase;letter-spacing:.8px;padding:8px 0 4px;">Rôle attribué</td>
                     <td style="color:#1a202c;font-size:15px;font-weight:600;text-align:right;">${roleLabel}</td>
                   </tr>
                   ${p.instrument ? `<tr>
@@ -125,7 +125,7 @@ export class EmailService {
                     <td style="color:#1a202c;font-size:15px;font-weight:600;text-align:right;">${p.instrument}</td>
                   </tr>` : ''}
                   <tr>
-                    <td style="color:#718096;font-size:12px;text-transform:uppercase;letter-spacing:.8px;padding:8px 0 0;">Expira el</td>
+                    <td style="color:#718096;font-size:12px;text-transform:uppercase;letter-spacing:.8px;padding:8px 0 0;">Expire le</td>
                     <td style="color:#e53e3e;font-size:13px;font-weight:600;text-align:right;">${expiryLabel}</td>
                   </tr>
                 </table>
@@ -144,7 +144,7 @@ export class EmailService {
             <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:32px;">
               <tr><td align="center">
                 <a href="${p.inviteUrl}" style="display:inline-block;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#ffffff;font-size:16px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;letter-spacing:-.2px;">
-                  Aceptar invitación →
+                  Accepter l'invitation →
                 </a>
               </td></tr>
             </table>
@@ -153,15 +153,15 @@ export class EmailService {
             <table width="100%" cellpadding="0" cellspacing="0" style="background:#f7fafc;border-radius:8px;margin-bottom:24px;">
               <tr><td style="padding:24px;text-align:center;">
                 <p style="margin:0 0 16px;color:#4a5568;font-size:13px;">
-                  ¿Tienes la app en el móvil? Escanea este QR directamente.
+                  Vous avez l'application sur mobile ? Scannez ce QR code directement.
                 </p>
-                <img src="${qrUrl}" alt="QR de invitación" style="width:180px;height:180px;border-radius:8px;" />
+                <img src="${qrUrl}" alt="QR code d'invitation" style="width:180px;height:180px;border-radius:8px;" />
               </td></tr>
             </table>
 
             <p style="margin:0;color:#a0aec0;font-size:12px;text-align:center;line-height:1.6;">
-              Si no esperabas esta invitación, puedes ignorar este mensaje.<br />
-              El enlace expirará el ${expiryLabel}.
+              Si vous n'attendiez pas cette invitation, vous pouvez ignorer ce message.<br />
+              Le lien expirera le ${expiryLabel}.
             </p>
           </td>
         </tr>
@@ -170,7 +170,7 @@ export class EmailService {
         <tr>
           <td style="background:#f7fafc;border-top:1px solid #e2e8f0;padding:20px 40px;text-align:center;">
             <p style="margin:0;color:#a0aec0;font-size:12px;">
-              © ${new Date().getFullYear()} RegieArt · Gestión profesional para músicos
+              © ${new Date().getFullYear()} RegieArt · Gestion professionnelle pour musiciens
             </p>
           </td>
         </tr>

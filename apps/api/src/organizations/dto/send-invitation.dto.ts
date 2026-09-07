@@ -19,7 +19,7 @@ export class SendInvitationDto {
   @IsString()
   @IsOptional()
   @MaxLength(100)
-  instrument?: string; // e.g. "Piano", "Guitarra eléctrica"
+  instrument?: string; // e.g. "Piano", "Guitare électrique"
 
   @IsString()
   @IsOptional()

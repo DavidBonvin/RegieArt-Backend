@@ -18,7 +18,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     if (err || !user) {
       // Log the raw JWT error so we can diagnose
       this.logger.warn(`JWT Validation failed — err: ${err?.message ?? 'none'}, info: ${JSON.stringify(info)}`);
-      throw err || new UnauthorizedException('Invalid or missing authentication token');
+      throw err || new UnauthorizedException('Jeton d\'authentification invalide ou manquant');
     }
     return user;
   }

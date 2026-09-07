@@ -14,7 +14,7 @@ export class AddRosterMemberDto {
 
   @IsString()
   @IsOptional()
-  role?: string; // "Trompeta", "Director Musical", "Técnico FOH"
+  role?: string; // "Trompette", "Directeur musical", "Technicien FOH"
 
   @IsString()
   @IsOptional()

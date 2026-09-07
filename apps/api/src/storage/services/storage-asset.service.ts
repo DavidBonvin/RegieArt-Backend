@@ -167,7 +167,7 @@ export class StorageAssetService {
       select: { id: true, key: true, assetType: true, uploadedById: true, orgId: true, isPublic: true },
     });
 
-    if (!asset) throw new NotFoundException(`Asset "${id}" no encontrado.`);
+    if (!asset) throw new NotFoundException(`Asset "${id}" introuvable.`);
 
     // Assets públicos: cualquier usuario autenticado puede descargarlos
     if (asset.isPublic) return { key: asset.key, assetType: asset.assetType };
@@ -177,7 +177,7 @@ export class StorageAssetService {
       (asset.orgId !== null && orgIds.includes(asset.orgId));
 
     if (!canAccess) {
-      throw new ForbiddenException('No tienes permiso para descargar este archivo.');
+      throw new ForbiddenException('Vous n\'avez pas la permission de télécharger ce fichier.');
     }
 
     return { key: asset.key, assetType: asset.assetType };
@@ -271,13 +271,13 @@ export class StorageAssetService {
     dto: UpdateAssetDto,
   ): Promise<AssetResponse> {
     const asset = await this.prisma.asset.findUnique({ where: { id, deletedAt: null } });
-    if (!asset) throw new NotFoundException(`Asset "${id}" no encontrado.`);
+    if (!asset) throw new NotFoundException(`Asset "${id}" introuvable.`);
 
     // Solo el uploader o un miembro de la org propietaria puede editar
     const canEdit =
       asset.uploadedById === userId ||
       (asset.orgId !== null && orgIds.includes(asset.orgId));
-    if (!canEdit) throw new UnauthorizedException('No tienes permiso para editar este archivo.');
+    if (!canEdit) throw new UnauthorizedException('Vous n\'avez pas la permission de modifier ce fichier.');
 
     const updated = await this.prisma.asset.update({
       where: { id },
@@ -306,12 +306,12 @@ export class StorageAssetService {
     orgIds: string[],
   ): Promise<{ id: string; key: string }> {
     const asset = await this.prisma.asset.findUnique({ where: { id, deletedAt: null } });
-    if (!asset) throw new NotFoundException(`Asset "${id}" no encontrado.`);
+    if (!asset) throw new NotFoundException(`Asset "${id}" introuvable.`);
 
     const canDelete =
       asset.uploadedById === userId ||
       (asset.orgId !== null && orgIds.includes(asset.orgId));
-    if (!canDelete) throw new UnauthorizedException('No tienes permiso para eliminar este archivo.');
+    if (!canDelete) throw new UnauthorizedException('Vous n\'avez pas la permission de supprimer ce fichier.');
 
     const deleted = await this.prisma.asset.update({
       where: { id },

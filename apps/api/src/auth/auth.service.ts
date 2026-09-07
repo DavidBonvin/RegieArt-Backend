@@ -59,16 +59,16 @@ export class AuthService {
       });
     } catch (err) {
       this.logger.error(`Keycloak unreachable on login: ${(err as Error).message}`);
-      throw new ServiceUnavailableException('Authentication service unavailable');
+      throw new ServiceUnavailableException('Service d\'authentification indisponible');
     }
 
     if (res.status === 401) {
-      throw new UnauthorizedException('Invalid email or password');
+      throw new UnauthorizedException('E-mail ou mot de passe invalide');
     }
 
     if (!res.ok) {
       this.logger.error(`Keycloak login returned ${res.status}`);
-      throw new ServiceUnavailableException('Authentication service unavailable');
+      throw new ServiceUnavailableException('Service d\'authentification indisponible');
     }
 
     const data = (await res.json()) as KeycloakTokenResponse;
@@ -100,16 +100,16 @@ export class AuthService {
       });
     } catch (err) {
       this.logger.error(`Keycloak unreachable on refresh: ${(err as Error).message}`);
-      throw new ServiceUnavailableException('Authentication service unavailable');
+      throw new ServiceUnavailableException('Service d\'authentification indisponible');
     }
 
     if (res.status === 400 || res.status === 401) {
-      throw new UnauthorizedException('Refresh token expired or invalid');
+      throw new UnauthorizedException('Jeton de rafraîchissement expiré ou invalide');
     }
 
     if (!res.ok) {
       this.logger.error(`Keycloak refresh returned ${res.status}`);
-      throw new ServiceUnavailableException('Authentication service unavailable');
+      throw new ServiceUnavailableException('Service d\'authentification indisponible');
     }
 
     const data = (await res.json()) as KeycloakTokenResponse;
@@ -145,12 +145,12 @@ export class AuthService {
       });
     } catch (err) {
       this.logger.error(`Keycloak unreachable: ${(err as Error).message}`);
-      throw new ServiceUnavailableException('Authentication service unavailable');
+      throw new ServiceUnavailableException('Service d\'authentification indisponible');
     }
 
     if (!res.ok) {
       this.logger.error(`Keycloak admin token endpoint returned ${res.status}`);
-      throw new ServiceUnavailableException('Authentication service unavailable');
+      throw new ServiceUnavailableException('Service d\'authentification indisponible');
     }
 
     const data = (await res.json()) as KeycloakTokenResponse;
@@ -185,18 +185,18 @@ export class AuthService {
       });
     } catch (err) {
       this.logger.error(`Keycloak Admin API unreachable: ${(err as Error).message}`);
-      throw new ServiceUnavailableException('Authentication service unavailable');
+      throw new ServiceUnavailableException('Service d\'authentification indisponible');
     }
 
     if (res.status === 201) return; // user created successfully
 
     if (res.status === 409) {
-      throw new ConflictException('An account with this email already exists');
+      throw new ConflictException('Un compte existe déjà avec cette adresse e-mail');
     }
 
     // Log body to diagnose permission/config issues without exposing to client
     const errorBody = await res.text().catch(() => '(unreadable)');
     this.logger.error(`Keycloak user creation failed — status: ${res.status}, body: ${errorBody}`);
-    throw new InternalServerErrorException('Could not create account. Please try again.');
+    throw new InternalServerErrorException('Impossible de créer le compte. Veuillez réessayer.');
   }
 }

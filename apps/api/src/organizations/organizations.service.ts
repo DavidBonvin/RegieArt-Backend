@@ -75,7 +75,7 @@ export class OrganizationsService {
     });
 
     if (!org) {
-      throw new NotFoundException('Organization not found');
+      throw new NotFoundException('Organisation introuvable');
     }
 
     return org;
@@ -93,7 +93,7 @@ export class OrganizationsService {
     });
 
     if (!membership || (membership.role !== MemberRole.OWNER && membership.role !== MemberRole.ADMIN)) {
-      throw new ForbiddenException('Not enough permissions');
+      throw new ForbiddenException('Permissions insuffisantes');
     }
 
     const updated = await this.prisma.organizationMember.update({
@@ -105,8 +105,8 @@ export class OrganizationsService {
     this.notifications.fire({
       recipientId: updated.user.id,
       type:        'ROLE_CHANGED',
-      title:       `Rol actualizado en ${updated.organization.name}`,
-      body:        `Tu nuevo rol es: ${updateDto.role}`,
+      title:       `Rôle mis à jour dans ${updated.organization.name}`,
+      body:        `Votre nouveau rôle est : ${updateDto.role}`,
       sourceId:    orgId,
       sourceType:  'organization',
     });
@@ -169,7 +169,7 @@ export class OrganizationsService {
       currentMembership?.role === MemberRole.ADMIN;
 
     if (!isSelf && !isAdminOrOwner) {
-      throw new ForbiddenException('Not enough permissions to remove this member');
+      throw new ForbiddenException('Permissions insuffisantes pour retirer ce membre');
     }
 
     // Cannot remove the last owner
@@ -178,17 +178,17 @@ export class OrganizationsService {
         where: { organizationId: orgId, role: MemberRole.OWNER },
       });
       if (ownerCount <= 1) {
-        throw new BadRequestException('Cannot leave: you are the last owner. Transfer ownership first.');
+        throw new BadRequestException('Impossible de quitter : vous êtes le dernier propriétaire. Transférez d\'abord la propriété.');
       }
     }
 
     const target = await this.prisma.organizationMember.findUnique({
       where: { userId_organizationId: { userId: targetUserId, organizationId: orgId } },
     });
-    if (!target) throw new NotFoundException('Member not found in this organization');
+    if (!target) throw new NotFoundException('Membre introuvable dans cette organisation');
 
     await this.prisma.organizationMember.delete({ where: { id: target.id } });
-    return { message: 'Member removed successfully' };
+    return { message: 'Membre retiré avec succès' };
   }
 
   // ─── INVITE LINKS ────────────────────────────────────────────
@@ -242,24 +242,24 @@ export class OrganizationsService {
     const link = await this.prisma.inviteLink.findFirst({
       where: { id: linkId, organizationId: orgId },
     });
-    if (!link) throw new NotFoundException('Invite link not found');
+    if (!link) throw new NotFoundException('Lien d\'invitation introuvable');
 
     await this.prisma.inviteLink.delete({ where: { id: linkId } });
-    return { message: 'Invite link revoked' };
+    return { message: 'Lien d\'invitation révoqué' };
   }
 
   async joinByToken(userId: string, token: string) {
     const link = await this.prisma.inviteLink.findUnique({ where: { token } });
 
-    if (!link) throw new NotFoundException('Invalid invite token');
-    if (link.usedAt) throw new BadRequestException('This invite link has already been used');
-    if (link.expiresAt < new Date()) throw new BadRequestException('This invite link has expired');
+    if (!link) throw new NotFoundException('Jeton d\'invitation invalide');
+    if (link.usedAt) throw new BadRequestException('Ce lien d\'invitation a déjà été utilisé');
+    if (link.expiresAt < new Date()) throw new BadRequestException('Ce lien d\'invitation a expiré');
 
     // Check if already a member
     const existing = await this.prisma.organizationMember.findUnique({
       where: { userId_organizationId: { userId, organizationId: link.organizationId } },
     });
-    if (existing) throw new ConflictException('You are already a member of this organization');
+    if (existing) throw new ConflictException('Vous êtes déjà membre de cette organisation');
 
     const [member] = await this.prisma.$transaction([
       this.prisma.organizationMember.create({
@@ -285,7 +285,7 @@ export class OrganizationsService {
     this.notifications.fireBulk(admins.map(a => ({
       recipientId: a.userId,
       type:        'INVITE_ACCEPTED' as const,
-      title:       `${joiner?.displayName ?? 'Alguien'} se unió a ${org?.name}`,
+      title:       `${joiner?.displayName ?? 'Quelqu\'un'} a rejoint ${org?.name}`,
       sourceId:    link.organizationId,
       sourceType:  'organization',
     })));
@@ -299,14 +299,14 @@ export class OrganizationsService {
     const m = await this.prisma.organizationMember.findUnique({
       where: { userId_organizationId: { userId, organizationId: orgId } },
     });
-    if (!m) throw new ForbiddenException('You are not a member of this organization');
+    if (!m) throw new ForbiddenException('Vous n\'êtes pas membre de cette organisation');
     return m;
   }
 
   private async requireAdminOrOwner(userId: string, orgId: string) {
     const m = await this.requireMembership(userId, orgId);
     if (m.role !== MemberRole.OWNER && m.role !== MemberRole.ADMIN) {
-      throw new ForbiddenException('Admin or Owner role required');
+      throw new ForbiddenException('Rôle Administrateur ou Propriétaire requis');
     }
     return m;
   }
@@ -314,7 +314,7 @@ export class OrganizationsService {
   private async requireOwner(userId: string, orgId: string) {
     const m = await this.requireMembership(userId, orgId);
     if (m.role !== MemberRole.OWNER) {
-      throw new ForbiddenException('Owner role required');
+      throw new ForbiddenException('Rôle Propriétaire requis');
     }
     return m;
   }

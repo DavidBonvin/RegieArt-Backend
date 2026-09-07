@@ -95,6 +95,6 @@ export class NotificationsService {
     await this.prisma.notification.deleteMany({
       where: { id, recipientId: userId },
     });
-    return { message: 'Notification deleted' };
+    return { message: 'Notification supprimée' };
   }
 }

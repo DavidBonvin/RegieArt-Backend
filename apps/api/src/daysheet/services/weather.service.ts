@@ -105,7 +105,7 @@ export class WeatherService {
       if (daysUntilEvent > 14) {
         forecast = {
           available: false,
-          reason: `La predicción estará disponible a partir del ${this.addDays(eventDate, -14).toLocaleDateString('es-ES')}`,
+          reason: `Les prévisions seront disponibles à partir du ${this.addDays(eventDate, -14).toLocaleDateString('fr-FR')}`,
           date: dateStr,
           location: '',
           conditionText: '',
@@ -150,7 +150,7 @@ export class WeatherService {
     dateStr: string,
     now: Date,
   ): Promise<WeatherForecast> {
-    const url = `${this.WEATHER_BASE}/forecast.json?key=${apiKey}&q=${lat},${lon}&dt=${dateStr}&days=1&aqi=no&alerts=no&lang=es`;
+    const url = `${this.WEATHER_BASE}/forecast.json?key=${apiKey}&q=${lat},${lon}&dt=${dateStr}&days=1&aqi=no&alerts=no&lang=fr`;
     const res = await fetch(url);
     if (!res.ok) {
       const body = await res.text();
@@ -167,7 +167,7 @@ export class WeatherService {
     dateStr: string,
     now: Date,
   ): Promise<WeatherForecast> {
-    const url = `${this.WEATHER_BASE}/history.json?key=${apiKey}&q=${lat},${lon}&dt=${dateStr}&aqi=no&lang=es`;
+    const url = `${this.WEATHER_BASE}/history.json?key=${apiKey}&q=${lat},${lon}&dt=${dateStr}&aqi=no&lang=fr`;
     const res = await fetch(url);
     if (!res.ok) {
       const body = await res.text();

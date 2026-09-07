@@ -20,7 +20,7 @@ export class UpsertEventFinanceDto {
 
   // Código ISO 4217: "EUR", "CAD", "USD"
   @IsString()
-  @Matches(/^[A-Z]{3}$/, { message: 'currency debe ser un código ISO 4217 (3 letras, ej: EUR)' })
+  @Matches(/^[A-Z]{3}$/, { message: 'currency doit être un code ISO 4217 (3 lettres, ex : EUR)' })
   @IsOptional()
   currency?: string;
 

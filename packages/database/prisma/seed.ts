@@ -3,15 +3,15 @@ import { PrismaClient, SkillCategoryType } from '@prisma/client';
 const prisma = new PrismaClient();
 
 const skillCategories: { name: string; type: SkillCategoryType; icon: string }[] = [
-  { name: 'Voz', type: SkillCategoryType.INSTRUMENT, icon: '🎤' },
-  { name: 'Guitarra', type: SkillCategoryType.INSTRUMENT, icon: '🎸' },
-  { name: 'Bajo', type: SkillCategoryType.INSTRUMENT, icon: '🎸' },
+  { name: 'Chant', type: SkillCategoryType.INSTRUMENT, icon: '🎤' },
+  { name: 'Guitare', type: SkillCategoryType.INSTRUMENT, icon: '🎸' },
+  { name: 'Basse', type: SkillCategoryType.INSTRUMENT, icon: '🎸' },
   { name: 'Piano', type: SkillCategoryType.INSTRUMENT, icon: '🎹' },
-  { name: 'Batería', type: SkillCategoryType.INSTRUMENT, icon: '🥁' },
-  { name: 'Sonido', type: SkillCategoryType.TECHNICAL, icon: '🔊' },
-  { name: 'Iluminación', type: SkillCategoryType.TECHNICAL, icon: '💡' },
-  { name: 'Producción', type: SkillCategoryType.TECHNICAL, icon: '🎚️' },
-  { name: 'Video', type: SkillCategoryType.TECHNICAL, icon: '🎥' },
+  { name: 'Batterie', type: SkillCategoryType.INSTRUMENT, icon: '🥁' },
+  { name: 'Son', type: SkillCategoryType.TECHNICAL, icon: '🔊' },
+  { name: 'Éclairage', type: SkillCategoryType.TECHNICAL, icon: '💡' },
+  { name: 'Production', type: SkillCategoryType.TECHNICAL, icon: '🎚️' },
+  { name: 'Vidéo', type: SkillCategoryType.TECHNICAL, icon: '🎥' },
 ];
 
 async function main() {
