@@ -58,11 +58,13 @@
       "directAccessGrantsEnabled": false,
       "redirectUris": [
         "http://localhost:3001/*",
+        "http://localhost:5173/*",
         "https://*.vercel.app/*",
         "https://*.railway.app/*"
       ],
       "webOrigins": [
         "http://localhost:3001",
+        "http://localhost:5173",
         "https://*.vercel.app",
         "https://*.railway.app"
       ]

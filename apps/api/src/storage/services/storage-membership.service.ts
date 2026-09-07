@@ -25,14 +25,11 @@ export class StorageMembershipService {
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
   ) {}
-
-  // Lanza ForbiddenException si el usuario no es miembro activo de la organización.
-  // Es seguro llamarlo múltiples veces — el caché absorbe las consultas repetidas.
+  
   async assertMembership(userId: string, orgId: string): Promise<void> {
     const cacheKey = `storage:membership:${userId}:${orgId}`;
     const client = this.redis.getClient();
 
-    // Redis is optional — if unavailable, fall through to DB
     try {
       const cached = await client.get(cacheKey);
 
@@ -40,15 +37,13 @@ export class StorageMembershipService {
 
       if (cached === '0') {
         throw new ForbiddenException(
-          'No tienes acceso a los recursos de esta organización.',
+          'You do not have access to this organisations resources.',
         );
       }
     } catch (err) {
-      // Re-throw business exceptions (ForbiddenException), swallow Redis errors
       if (err instanceof ForbiddenException) throw err;
     }
 
-    // Cache miss or Redis unavailable: query DB
     const membership = await this.prisma.organizationMember.findUnique({
       where: { userId_organizationId: { userId, organizationId: orgId } },
       select: { id: true },
@@ -56,12 +51,11 @@ export class StorageMembershipService {
 
     const isMember = membership !== null;
 
-    // Write to cache only if Redis is available (fire-and-forget)
     client.set(cacheKey, isMember ? '1' : '0', 'EX', MEMBERSHIP_CACHE_TTL_SECONDS).catch(() => {});
 
     if (!isMember) {
       throw new ForbiddenException(
-        'No tienes acceso a los recursos de esta organización.',
+        'You do not have access to this organisations resources.',
       );
     }
   }

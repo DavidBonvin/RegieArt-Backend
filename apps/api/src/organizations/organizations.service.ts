@@ -24,7 +24,6 @@ export class OrganizationsService {
   async create(userId: string, createDto: CreateOrganizationDto) {
     const slug = slugify(createDto.name, { lower: true, strict: true });
     
-    // Add unique suffix if slug exists
     const existing = await this.prisma.organization.findUnique({ where: { slug } });
     const finalSlug = existing ? `${slug}-${Date.now()}` : slug;
 

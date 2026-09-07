@@ -1,5 +1,12 @@
 version: '3.8'
 
+# 'regiart' is the shared network used by the frontend repo (fronted-regieArt)
+# to reach these infra containers by hostname. Create it once with:
+#   docker network create regiart
+networks:
+  regiart:
+    external: true
+
 services:
   # ─── PostgreSQL ────────────────────────────────────────────
   postgres:
@@ -14,6 +21,9 @@ services:
       - ./postgres-init/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - '5433:5432'
+    networks:
+      - default
+      - regiart
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres']
       interval: 10s
@@ -39,6 +49,9 @@ services:
       - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
     ports:
       - '8090:8080'
+    networks:
+      - default
+      - regiart
     depends_on:
       postgres:
         condition: service_healthy
@@ -50,6 +63,9 @@ services:
     restart: unless-stopped
     ports:
       - '6379:6379'
+    networks:
+      - default
+      - regiart
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
@@ -57,12 +73,19 @@ services:
       retries: 5
 
   # ─── API (NestJS) ──────────────────────────────────────────
+  # Optional: only needed if you want the API fully dockerized instead of
+  # running it locally with `pnpm dev:api`. Start it explicitly with:
+  #   docker compose --profile docker-api up -d api
   api:
+    profiles: ['docker-api']
     build:
       context: .
       dockerfile: apps/api/Dockerfile
     container_name: regieart-api
     restart: unless-stopped
+    networks:
+      - default
+      - regiart
     environment:
       NODE_ENV: development
       PORT: 3000

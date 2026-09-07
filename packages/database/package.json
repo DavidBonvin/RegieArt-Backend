@@ -7,16 +7,21 @@
   "scripts": {
     "build": "tsc",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:migrate:prod": "prisma migrate deploy",
-    "prisma:studio": "prisma studio",
-    "prisma:reset": "prisma migrate reset"
+    "prisma:migrate": "dotenv -e ../../.env -- prisma migrate dev",
+    "prisma:migrate:prod": "dotenv -e ../../.env -- prisma migrate deploy",
+    "prisma:studio": "dotenv -e ../../.env -- prisma studio",
+    "prisma:reset": "dotenv -e ../../.env -- prisma migrate reset",
+    "prisma:seed": "dotenv -e ../../.env -- ts-node --transpile-only prisma/seed.ts"
+  },
+  "prisma": {
+    "seed": "dotenv -e ../../.env -- ts-node --transpile-only prisma/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.10.0"
   },
   "devDependencies": {
     "prisma": "^5.10.0",
+    "ts-node": "^10.9.2",
     "typescript": "^5.4.3"
   }
 }

@@ -36,7 +36,7 @@ export class DaysheetService {
     });
     if (!event) throw new NotFoundException('Event not found');
 
-    // 2. Verificar membresía
+
     const membership = await this.prisma.organizationMember.findUnique({
       where: { userId_organizationId: { userId, organizationId: event.orgId } },
     });
@@ -45,7 +45,7 @@ export class DaysheetService {
     const isAdminOrOwner =
       membership.role === MemberRole.OWNER || membership.role === MemberRole.ADMIN;
 
-    // 3. Cargar todo en paralelo
+
     const [schedule, roster, vehicles, finance, weather] = await Promise.all([
       this.prisma.eventScheduleItem.findMany({
         where: { eventId },

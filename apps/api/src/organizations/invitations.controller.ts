@@ -20,10 +20,6 @@ import { AuthenticatedUser } from '@regieart/types';
 export class InvitationsController {
   constructor(private readonly invitationsService: InvitationsService) {}
 
-  // ═══════════════════════════════════════════════════════════
-  // SENDER SIDE — Admin/Owner of the org
-  // ═══════════════════════════════════════════════════════════
-
   // POST /organizations/:orgId/invitations — send targeted invitation
   @Post('organizations/:orgId/invitations')
   sendInvitation(
