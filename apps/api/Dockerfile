@@ -1,7 +1,7 @@
 FROM node:22-alpine AS builder
 
 RUN apk add --no-cache openssl
-RUN npm install -g pnpm
+RUN npm install -g pnpm@11.23.0
 WORKDIR /app
 
 # Copy configuration files
@@ -12,9 +12,8 @@ COPY packages ./packages
 COPY apps/api ./apps/api
 
 # Install dependencies and build
-# --ignore-scripts avoids pnpm 10 blocking postinstall hooks
-# then rebuild only the packages that need native binaries
-RUN pnpm install --ignore-scripts
+# --ignore-scripts avoids arbitrary postinstall hooks; rebuild runs only approved packages.
+RUN pnpm install --frozen-lockfile --ignore-scripts
 RUN pnpm rebuild @prisma/engines @prisma/client @nestjs/core
 RUN pnpm --filter @regieart/types build
 RUN pnpm --filter @regieart/database prisma:generate
@@ -24,7 +23,7 @@ RUN pnpm --filter api build
 FROM node:22-alpine AS runner
 
 RUN apk add --no-cache openssl
-RUN npm install -g pnpm
+RUN npm install -g pnpm@11.23.0
 WORKDIR /app
 
 # Copy the necessary files from the builder
