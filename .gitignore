@@ -40,7 +40,8 @@ coverage/
 keycloak-data/
 
 # Local docs and media files (not for production)
-Docs/
+Docs/*
+!Docs/DATABASE_ARCHITECTURE.md
 MediasTest/
 
 # TypeScript incremental build cache

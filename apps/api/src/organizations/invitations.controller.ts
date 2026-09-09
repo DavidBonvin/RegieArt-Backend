@@ -60,6 +60,15 @@ export class InvitationsController {
     return this.invitationsService.getMyInvitations(user.id);
   }
 
+  // GET /invitations/by-id/:id — resolve notification sourceId to invitation details/token
+  @Get('invitations/by-id/:id')
+  getInvitationById(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.invitationsService.getInvitationById(user.id, id);
+  }
+
   // GET /invitations/:token — details before accepting (also works for non-members)
   @Get('invitations/:token')
   getInvitationByToken(@Param('token') token: string) {

@@ -181,6 +181,7 @@ export class InvitationsService {
     const inv = await this.prisma.invitation.findUnique({
       where: { token },
       select: {
+        token: true,
         id: true,
         role: true,
         instrument: true,
@@ -195,6 +196,49 @@ export class InvitationsService {
 
     if (inv.status === 'PENDING' && inv.expiresAt < new Date()) {
       await this.prisma.invitation.update({ where: { token }, data: { status: 'EXPIRED' } });
+      throw new BadRequestException('Cette invitation a expiré');
+    }
+
+    return inv;
+  }
+
+  // ─── Get invitation details by id (notification click) ───────
+
+  async getInvitationById(userId: string, id: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+    if (!user) throw new NotFoundException('Utilisateur introuvable');
+
+    const inv = await this.prisma.invitation.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        token: true,
+        targetEmail: true,
+        targetUserId: true,
+        role: true,
+        instrument: true,
+        personalMessage: true,
+        status: true,
+        expiresAt: true,
+        createdAt: true,
+        organization: { select: { id: true, name: true, logoUrl: true, description: true } },
+        createdBy:    { select: { id: true, displayName: true, avatarUrl: true } },
+      },
+    });
+    if (!inv) throw new NotFoundException('Invitation introuvable');
+
+    if (inv.targetUserId && inv.targetUserId !== userId) {
+      throw new ForbiddenException('Cette invitation appartient à un autre utilisateur');
+    }
+    if (inv.targetEmail !== user.email) {
+      throw new ForbiddenException('Cette invitation a été envoyée à une autre adresse e-mail');
+    }
+
+    if (inv.status === 'PENDING' && inv.expiresAt < new Date()) {
+      await this.prisma.invitation.update({ where: { id }, data: { status: 'EXPIRED' } });
       throw new BadRequestException('Cette invitation a expiré');
     }
 
