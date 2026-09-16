@@ -12,6 +12,8 @@ const mockConfig = {
   getOrThrow: (key: string) => {
     const map: Record<string, string> = {
       KEYCLOAK_URL: 'http://keycloak:8090',
+      KEYCLOAK_ISSUER: 'http://keycloak:8090',
+      KEYCLOAK_JWKS_URL: 'http://keycloak:8090',
       KEYCLOAK_REALM: 'regieart',
       KEYCLOAK_ADMIN_USER: 'admin',
       KEYCLOAK_ADMIN_PASSWORD: 'admin-pass',

@@ -93,6 +93,10 @@ services:
       # Use docker service names instead of localhost
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/regieart?schema=public
       KEYCLOAK_URL: http://keycloak:8080
+      # The browser receives tokens whose issuer uses the host-published URL.
+      # The API reaches the same Keycloak instance through the Docker network.
+      KEYCLOAK_ISSUER: http://localhost:8090
+      KEYCLOAK_JWKS_URL: http://keycloak:8080
       KEYCLOAK_REALM: regieart
       KEYCLOAK_CLIENT_ID: regieart-api
       KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-change-me-in-production}

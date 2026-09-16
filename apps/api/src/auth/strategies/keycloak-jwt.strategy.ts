@@ -12,9 +12,10 @@ export class KeycloakJwtStrategy extends PassportStrategy(Strategy) {
     private configService: ConfigService,
     private prisma: PrismaService,
   ) {
-    const keycloakUrl = configService.get<string>('KEYCLOAK_URL');
-    const realm = configService.get<string>('KEYCLOAK_REALM');
-    const issuer = `${keycloakUrl}/realms/${realm}`;
+    const keycloakUrl = configService.getOrThrow<string>('KEYCLOAK_URL');
+    const realm = configService.getOrThrow<string>('KEYCLOAK_REALM');
+    const issuer = `${configService.get<string>('KEYCLOAK_ISSUER', keycloakUrl)}/realms/${realm}`;
+    const jwksUrl = configService.get<string>('KEYCLOAK_JWKS_URL', keycloakUrl);
 
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -25,7 +26,7 @@ export class KeycloakJwtStrategy extends PassportStrategy(Strategy) {
         cache: true,
         rateLimit: true,
         jwksRequestsPerMinute: 5,
-        jwksUri: `${issuer}/protocol/openid-connect/certs`,
+        jwksUri: `${jwksUrl}/realms/${realm}/protocol/openid-connect/certs`,
       }),
     });
   }

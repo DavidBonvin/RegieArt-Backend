@@ -2,6 +2,21 @@ packages:
   - 'apps/*'
   - 'packages/*'
 
+# Lockfile is committed and trusted (no external contributors edit it directly);
+# skip the per-package supply-chain metadata re-check on every frozen-lockfile install,
+# which otherwise makes ~800 extra registry requests and is prone to network timeouts in CI/Docker.
+trustLockfile: true
+
+# Tolerate the slow/unstable network seen during Docker builds: retry harder and don't
+# abort on downloads that are merely slow (below the 50 KiB/s default warn threshold).
+fetchRetries: 5
+fetchRetryFactor: 2
+fetchRetryMintimeout: 20000
+fetchRetryMaxtimeout: 120000
+fetchTimeout: 300000
+fetchMinSpeedKiBps: 5
+networkConcurrency: 4
+
 onlyBuiltDependencies:
   - '@nestjs/core'
   - '@prisma/client'
