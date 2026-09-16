@@ -23,6 +23,36 @@ export class InvitationsService {
     return process.env.APP_URL ?? 'http://localhost:3001';
   }
 
+  private withResponseState<T extends { token: string; status: string; expiresAt: Date }>(invitation: T) {
+    const isExpired = invitation.status === 'EXPIRED' || invitation.expiresAt < new Date();
+    const status = isExpired ? 'EXPIRED' : invitation.status;
+
+    return {
+      ...invitation,
+      status,
+      canRespond: status === 'PENDING',
+      statusMessage: this.getInvitationStatusMessage(status),
+      inviteUrl: `${this.appUrl}/invitations/${invitation.token}`,
+    };
+  }
+
+  private getInvitationStatusMessage(status: string): string {
+    switch (status) {
+      case 'PENDING':
+        return 'Invitation en attente';
+      case 'ACCEPTED':
+        return 'Invitation déjà acceptée';
+      case 'REJECTED':
+        return 'Invitation déjà refusée';
+      case 'REVOKED':
+        return 'Invitation révoquée';
+      case 'EXPIRED':
+        return 'Invitation expirée';
+      default:
+        return 'Statut d\'invitation inconnu';
+    }
+  }
+
   // ─── Send invitation ─────────────────────────────────────────
 
   async sendInvitation(senderId: string, orgId: string, dto: SendInvitationDto) {
@@ -117,7 +147,7 @@ export class InvitationsService {
       });
     }
 
-    return { ...invitation, inviteUrl };
+    return this.withResponseState({ ...invitation, inviteUrl });
   }
 
   // ─── List invitations sent by an org (admin view) ────────────
@@ -196,10 +226,10 @@ export class InvitationsService {
 
     if (inv.status === 'PENDING' && inv.expiresAt < new Date()) {
       await this.prisma.invitation.update({ where: { token }, data: { status: 'EXPIRED' } });
-      throw new BadRequestException('Cette invitation a expiré');
+      return this.withResponseState({ ...inv, status: 'EXPIRED' });
     }
 
-    return inv;
+    return this.withResponseState(inv);
   }
 
   // ─── Get invitation details by id (notification click) ───────
@@ -239,10 +269,10 @@ export class InvitationsService {
 
     if (inv.status === 'PENDING' && inv.expiresAt < new Date()) {
       await this.prisma.invitation.update({ where: { id }, data: { status: 'EXPIRED' } });
-      throw new BadRequestException('Cette invitation a expiré');
+      return this.withResponseState({ ...inv, status: 'EXPIRED' });
     }
 
-    return inv;
+    return this.withResponseState(inv);
   }
 
   // ─── Accept invitation ───────────────────────────────────────

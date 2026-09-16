@@ -11,6 +11,10 @@ export enum MemberRole {
   EXTERNAL_TECH = 'EXTERNAL_TECH',
 }
 
+export enum PlatformRole {
+  PLATFORM_ADMIN = 'platform_admin',
+}
+
 // ─── Usuario autenticado (payload del JWT de Keycloak) ───────
 export interface JwtPayload {
   sub: string;         // keycloakId
@@ -31,6 +35,7 @@ export interface AuthenticatedUser {
   email: string;
   displayName: string;
   avatarUrl?: string;
+  platformRoles: string[];
 }
 
 // ─── Respuesta estándar de la API ────────────────────────────

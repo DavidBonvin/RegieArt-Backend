@@ -56,6 +56,7 @@ export class KeycloakJwtStrategy extends PassportStrategy(Strategy) {
       email: user.email,
       displayName: user.displayName,
       avatarUrl: user.avatarUrl || undefined,
+      platformRoles: payload.realm_access?.roles ?? [],
     };
   }
 }

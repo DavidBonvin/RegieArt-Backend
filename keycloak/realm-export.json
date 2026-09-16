@@ -6,6 +6,7 @@
   "registrationAllowed": true,
   "registrationEmailAsUsername": true,
   "rememberMe": true,
+  "loginTheme": "regieart",
   "verifyEmail": false,
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
@@ -123,7 +124,8 @@
   "roles": {
     "realm": [
       { "name": "app-user", "description": "Usuario estándar del ecosistema" },
-      { "name": "app-admin", "description": "Administrador del ecosistema" }
+      { "name": "app-admin", "description": "Administrador del ecosistema" },
+      { "name": "platform_admin", "description": "Administrador global de la plataforma" }
     ]
   },
   "defaultRoles": ["app-user"],

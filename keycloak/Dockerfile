@@ -10,6 +10,9 @@ FROM quay.io/keycloak/keycloak:23.0
 # Copy realm so Keycloak auto-imports it on first boot
 COPY realm-export.json /opt/keycloak/data/import/realm-export.json
 
+# Copy the branded login theme used by the RegieArt realm
+COPY themes/regieart /opt/keycloak/themes/regieart
+
 EXPOSE 8080
 
 ENTRYPOINT ["/opt/keycloak/bin/kc.sh"]

@@ -47,6 +47,7 @@ services:
       KC_HTTP_ENABLED: 'true'
     volumes:
       - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
+      - ./keycloak/themes/regieart:/opt/keycloak/themes/regieart:ro
     ports:
       - '8090:8080'
     networks:
